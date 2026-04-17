@@ -1,0 +1,5 @@
+{
+    "require": {
+        "dedoc/scramble": "^0.13.14"
+    }
+}

@@ -1,0 +1,143 @@
+pipeline {
+  agent any
+
+  environment {
+    REPO_URL = 'https://github.com/voluntarios/ccss_consultory_bk.git'
+    BRANCH = 'QA'
+    IMAGE_NAME = 'ccss-backend'
+    CONTAINER_NAME = 'ccss-backend-app'
+    NETWORK_NAME = 'ccss-net'
+    DB_CONTAINER_NAME = 'ccss-mysql'
+    DB_DATABASE = 'db_ccss'
+    DB_USERNAME = 'ccss_user'
+    DB_PASSWORD = credentials('ccss-db-password')
+    DB_ROOT_PASSWORD = credentials('ccss-db-root-password')
+    MAIL_MAILER = 'smtp'
+    MAIL_SCHEME = 'smtp'
+    MAIL_HOST = 'smtp.gmail.com'
+    MAIL_PORT = '587'
+    MAIL_FROM_NAME = 'CCSS Consultory'
+    MAIL_USERNAME = credentials('ccss-mail-username')
+    MAIL_PASSWORD = credentials('ccss-mail-password')
+    HOST_PORT = '8000'
+    CONTAINER_PORT = '8000'
+    CREDENTIALS_ID = 'H-github-ccss'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        deleteDir()
+        git branch: "${BRANCH}",
+            credentialsId: "${CREDENTIALS_ID}",
+            url: "${REPO_URL}"
+      }
+    }
+
+    stage('Build Docker Image') {
+      steps {
+        script {
+          if (isUnix()) {
+            sh 'docker build -t ${IMAGE_NAME}:latest -f init/Dockerfile init'
+          } else {
+            bat 'docker build -t %IMAGE_NAME%:latest -f init/Dockerfile init'
+          }
+        }
+      }
+    }
+
+    stage('Provision Database') {
+      steps {
+        script {
+          if (isUnix()) {
+            sh 'docker network inspect ${NETWORK_NAME} >/dev/null 2>&1 || docker network create ${NETWORK_NAME}'
+            sh 'docker rm -f ${DB_CONTAINER_NAME} || true'
+            sh 'docker run -d --name ${DB_CONTAINER_NAME} --network ${NETWORK_NAME} -e MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD} -e MYSQL_DATABASE=${DB_DATABASE} -e MYSQL_USER=${DB_USERNAME} -e MYSQL_PASSWORD=${DB_PASSWORD} mysql:8.0'
+            sh 'for i in $(seq 1 40); do docker exec ${DB_CONTAINER_NAME} mysqladmin ping -h 127.0.0.1 -uroot -p${DB_ROOT_PASSWORD} --silent && exit 0; sleep 3; done; exit 1'
+          } else {
+            bat 'docker network inspect %NETWORK_NAME% >NUL 2>&1 || docker network create %NETWORK_NAME%'
+            bat 'docker rm -f %DB_CONTAINER_NAME% || exit /b 0'
+            bat 'docker run -d --name %DB_CONTAINER_NAME% --network %NETWORK_NAME% -e MYSQL_ROOT_PASSWORD=%DB_ROOT_PASSWORD% -e MYSQL_DATABASE=%DB_DATABASE% -e MYSQL_USER=%DB_USERNAME% -e MYSQL_PASSWORD=%DB_PASSWORD% mysql:8.0'
+            bat 'timeout /t 25 /nobreak >NUL'
+          }
+        }
+      }
+    }
+
+    stage('Deploy Container') {
+      steps {
+        script {
+          if (isUnix()) {
+            sh 'docker rm -f ${CONTAINER_NAME} || true'
+            sh 'docker run -d --name ${CONTAINER_NAME} --network ${NETWORK_NAME} -p ${HOST_PORT}:${CONTAINER_PORT} -e DB_CONNECTION=mysql -e DB_HOST=${DB_CONTAINER_NAME} -e DB_PORT=3306 -e DB_DATABASE=${DB_DATABASE} -e DB_USERNAME=${DB_USERNAME} -e DB_PASSWORD=${DB_PASSWORD} -e SESSION_DRIVER=file -e CACHE_STORE=file -e QUEUE_CONNECTION=sync -e MAIL_MAILER=${MAIL_MAILER} -e MAIL_SCHEME=${MAIL_SCHEME} -e MAIL_HOST=${MAIL_HOST} -e MAIL_PORT=${MAIL_PORT} -e MAIL_USERNAME=${MAIL_USERNAME} -e MAIL_PASSWORD=${MAIL_PASSWORD} -e MAIL_FROM_ADDRESS=${MAIL_USERNAME} -e "MAIL_FROM_NAME=${MAIL_FROM_NAME}" ${IMAGE_NAME}:latest'
+          } else {
+            bat 'docker rm -f %CONTAINER_NAME% || exit /b 0'
+            bat 'docker run -d --name %CONTAINER_NAME% --network %NETWORK_NAME% -p %HOST_PORT%:%CONTAINER_PORT% -e DB_CONNECTION=mysql -e DB_HOST=%DB_CONTAINER_NAME% -e DB_PORT=3306 -e DB_DATABASE=%DB_DATABASE% -e DB_USERNAME=%DB_USERNAME% -e DB_PASSWORD=%DB_PASSWORD% -e SESSION_DRIVER=file -e CACHE_STORE=file -e QUEUE_CONNECTION=sync -e MAIL_MAILER=%MAIL_MAILER% -e MAIL_SCHEME=%MAIL_SCHEME% -e MAIL_HOST=%MAIL_HOST% -e MAIL_PORT=%MAIL_PORT% -e MAIL_USERNAME=%MAIL_USERNAME% -e MAIL_PASSWORD=%MAIL_PASSWORD% -e MAIL_FROM_ADDRESS=%MAIL_USERNAME% -e "MAIL_FROM_NAME=%MAIL_FROM_NAME%" %IMAGE_NAME%:latest'
+          }
+        }
+      }
+    }
+
+    stage('Migrate and Seed') {
+      steps {
+        script {
+          if (isUnix()) {
+            sh 'docker exec ${CONTAINER_NAME} php artisan config:clear'
+            sh 'docker exec ${CONTAINER_NAME} php artisan cache:clear'
+            sh 'docker exec ${CONTAINER_NAME} php artisan config:cache'
+            sh 'docker exec ${CONTAINER_NAME} php artisan migrate --force'
+            sh 'docker exec ${CONTAINER_NAME} php artisan db:seed --force'
+          } else {
+            bat 'docker exec %CONTAINER_NAME% php artisan config:clear'
+            bat 'docker exec %CONTAINER_NAME% php artisan cache:clear'
+            bat 'docker exec %CONTAINER_NAME% php artisan config:cache'
+            bat 'docker exec %CONTAINER_NAME% php artisan migrate --force'
+            bat 'docker exec %CONTAINER_NAME% php artisan db:seed --force'
+          }
+        }
+      }
+    }
+
+    stage('Smoke Test') {
+      steps {
+        script {
+          if (isUnix()) {
+            sh 'sleep 8'
+            sh 'docker exec ${CONTAINER_NAME} sh -lc "curl -fsS http://127.0.0.1:${CONTAINER_PORT}/up"'
+          } else {
+            bat 'timeout /t 8 /nobreak >NUL'
+            bat 'docker exec %CONTAINER_NAME% curl -fsS http://127.0.0.1:%CONTAINER_PORT%/up'
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      script {
+        if (isUnix()) {
+          sh 'docker image prune -f || true'
+        } else {
+          bat 'docker image prune -f || exit /b 0'
+        }
+      }
+    }
+    success {
+      echo 'Backend deploy OK'
+      echo "URL local: http://localhost:${HOST_PORT}"
+    }
+    failure {
+      echo 'Backend deploy FAILED'
+      script {
+        if (isUnix()) {
+          sh 'docker logs ${CONTAINER_NAME} --tail 120 || true'
+          sh 'docker logs ${DB_CONTAINER_NAME} --tail 80 || true'
+        } else {
+          bat 'docker logs %CONTAINER_NAME% --tail 120'
+          bat 'docker logs %DB_CONTAINER_NAME% --tail 80'
+        }
+      }
+    }
+  }
+}
