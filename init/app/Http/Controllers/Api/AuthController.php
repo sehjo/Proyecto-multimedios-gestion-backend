@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\HasPermissionRequest;
 use App\Http\Resources\UserResource;
+use App\Http\Responses\AuthResponseConst;
+use App\Http\Responses\GlobalResponseConst;
 use App\Mail\PasswordResetMail;
 use App\Models\User;
+use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +30,16 @@ class AuthController extends Controller
      *
      * @unauthenticated
      */
+    #[Response(
+        status: AuthResponseConst::LOGIN_SUCCESS['status'],
+        description: AuthResponseConst::LOGIN_SUCCESS['description'],
+        examples: [AuthResponseConst::LOGIN_SUCCESS['examples']],
+    )]
+    #[Response(
+        status: AuthResponseConst::LOGIN_INVALID['status'],
+        description: AuthResponseConst::LOGIN_INVALID['description'],
+        examples: [AuthResponseConst::LOGIN_INVALID['examples']],
+    )]
     public function login(Request $request): JsonResponse
     {
         $request->validate([
@@ -56,6 +69,16 @@ class AuthController extends Controller
      * Revokes the authenticated user's current access token. After this, the
      * same token is no longer valid and any request using it returns 401.
      */
+    #[Response(
+        status: AuthResponseConst::LOGOUT_SUCCESS['status'],
+        description: AuthResponseConst::LOGOUT_SUCCESS['description'],
+        examples: [AuthResponseConst::LOGOUT_SUCCESS['examples']],
+    )]
+    #[Response(
+        status: GlobalResponseConst::UNAUTHENTICATED['status'],
+        description: GlobalResponseConst::UNAUTHENTICATED['description'],
+        examples: [GlobalResponseConst::UNAUTHENTICATED['examples']],
+    )]
     public function logout(Request $request): JsonResponse
     {
         $request->user()->currentAccessToken()->delete();
@@ -70,6 +93,21 @@ class AuthController extends Controller
      * hide a button). The real authorization still lives in the route
      * middleware; this is only a convenience query.
      */
+    #[Response(
+        status: AuthResponseConst::HAS_PERMISSION_SUCCESS['status'],
+        description: AuthResponseConst::HAS_PERMISSION_SUCCESS['description'],
+        examples: [AuthResponseConst::HAS_PERMISSION_SUCCESS['examples']],
+    )]
+    #[Response(
+        status: GlobalResponseConst::UNAUTHENTICATED['status'],
+        description: GlobalResponseConst::UNAUTHENTICATED['description'],
+        examples: [GlobalResponseConst::UNAUTHENTICATED['examples']],
+    )]
+    #[Response(
+        status: GlobalResponseConst::VALIDATION_ERROR['status'],
+        description: GlobalResponseConst::VALIDATION_ERROR['description'],
+        examples: [GlobalResponseConst::VALIDATION_ERROR['examples']],
+    )]
     public function hasPermission(HasPermissionRequest $request): JsonResponse
     {
         $permission = $request->validated()['permission'];
@@ -89,6 +127,16 @@ class AuthController extends Controller
      *
      * @unauthenticated
      */
+    #[Response(
+        status: AuthResponseConst::FORGOT_PASSWORD_SUCCESS['status'],
+        description: AuthResponseConst::FORGOT_PASSWORD_SUCCESS['description'],
+        examples: [AuthResponseConst::FORGOT_PASSWORD_SUCCESS['examples']],
+    )]
+    #[Response(
+        status: GlobalResponseConst::VALIDATION_ERROR['status'],
+        description: GlobalResponseConst::VALIDATION_ERROR['description'],
+        examples: [GlobalResponseConst::VALIDATION_ERROR['examples']],
+    )]
     public function forgotPassword(Request $request): JsonResponse
     {
         $request->validate([
@@ -144,6 +192,16 @@ class AuthController extends Controller
      *
      * @unauthenticated
      */
+    #[Response(
+        status: AuthResponseConst::RESET_PASSWORD_SUCCESS['status'],
+        description: AuthResponseConst::RESET_PASSWORD_SUCCESS['description'],
+        examples: [AuthResponseConst::RESET_PASSWORD_SUCCESS['examples']],
+    )]
+    #[Response(
+        status: AuthResponseConst::RESET_PASSWORD_INVALID['status'],
+        description: AuthResponseConst::RESET_PASSWORD_INVALID['description'],
+        examples: [AuthResponseConst::RESET_PASSWORD_INVALID['examples']],
+    )]
     public function resetPassword(Request $request): JsonResponse
     {
         $request->validate([

@@ -17,8 +17,10 @@ class StoreRoleRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // @example Recepcion
             'name'          => ['required', 'string', 'max:50', 'not_regex:/^\s*$/', 'unique:roles,name'],
             'permissions'   => ['sometimes', 'array'],
+            // @example patients.create
             'permissions.*' => ['string', 'exists:permissions,name'],
         ];
     }

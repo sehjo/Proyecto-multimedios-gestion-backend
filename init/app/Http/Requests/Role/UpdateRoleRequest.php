@@ -21,8 +21,10 @@ class UpdateRoleRequest extends FormRequest
 
         return [
             // 'name' is optional: permissions can be updated on their own.
+            // @example Recepcion
             'name'          => ['sometimes', 'string', 'max:50', 'not_regex:/^\s*$/', Rule::unique('roles', 'name')->ignore($roleId)],
             'permissions'   => ['sometimes', 'array'],
+            // @example patients.update
             'permissions.*' => ['string', 'exists:permissions,name'],
         ];
     }

@@ -7,8 +7,11 @@ use App\Http\Requests\Role\AssignRoleRequest;
 use App\Http\Requests\Role\StoreRoleRequest;
 use App\Http\Requests\Role\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
+use App\Http\Responses\GlobalResponseConst;
+use App\Http\Responses\RoleResponseConst;
 use App\Models\User;
 use App\Support\PermissionCatalog;
+use Dedoc\Scramble\Attributes\Response as ResponseAttribute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Spatie\Permission\Models\Permission;
@@ -32,8 +35,23 @@ class RoleController extends Controller
     /**
      * List roles.
      *
-     * Returns all roles with their permissions. Requires the Administrador role.
+     * Returns all roles with their permissions. Requires the `roles.read` permission.
      */
+    #[ResponseAttribute(
+        status: RoleResponseConst::ROLE_LIST['status'],
+        description: RoleResponseConst::ROLE_LIST['description'],
+        examples: [RoleResponseConst::ROLE_LIST['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::UNAUTHENTICATED['status'],
+        description: GlobalResponseConst::UNAUTHENTICATED['description'],
+        examples: [GlobalResponseConst::UNAUTHENTICATED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::FORBIDDEN['status'],
+        description: GlobalResponseConst::FORBIDDEN['description'],
+        examples: [GlobalResponseConst::FORBIDDEN['examples']],
+    )]
     public function index(): JsonResponse
     {
         $roles = Role::with('permissions')->orderBy('name')->get();
@@ -44,8 +62,23 @@ class RoleController extends Controller
     /**
      * Show role.
      *
-     * Returns a role and its permissions. Requires the Administrador role.
+     * Returns a role and its permissions. Requires the `roles.read` permission.
      */
+    #[ResponseAttribute(
+        status: RoleResponseConst::ROLE_SHOW['status'],
+        description: RoleResponseConst::ROLE_SHOW['description'],
+        examples: [RoleResponseConst::ROLE_SHOW['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::UNAUTHENTICATED['status'],
+        description: GlobalResponseConst::UNAUTHENTICATED['description'],
+        examples: [GlobalResponseConst::UNAUTHENTICATED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::FORBIDDEN['status'],
+        description: GlobalResponseConst::FORBIDDEN['description'],
+        examples: [GlobalResponseConst::FORBIDDEN['examples']],
+    )]
     public function show(Role $role): JsonResponse
     {
         return response()->json(new RoleResource($role->load('permissions')));
@@ -55,8 +88,28 @@ class RoleController extends Controller
      * Create role.
      *
      * Creates a new role and, optionally, assigns it permissions.
-     * Requires the Administrador role.
+     * Requires the `roles.create` permission.
      */
+    #[ResponseAttribute(
+        status: RoleResponseConst::ROLE_CREATED['status'],
+        description: RoleResponseConst::ROLE_CREATED['description'],
+        examples: [RoleResponseConst::ROLE_CREATED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::UNAUTHENTICATED['status'],
+        description: GlobalResponseConst::UNAUTHENTICATED['description'],
+        examples: [GlobalResponseConst::UNAUTHENTICATED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::FORBIDDEN['status'],
+        description: GlobalResponseConst::FORBIDDEN['description'],
+        examples: [GlobalResponseConst::FORBIDDEN['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::VALIDATION_ERROR['status'],
+        description: GlobalResponseConst::VALIDATION_ERROR['description'],
+        examples: [GlobalResponseConst::VALIDATION_ERROR['examples']],
+    )]
     public function store(StoreRoleRequest $request): JsonResponse
     {
         $data = $request->validated();
@@ -79,8 +132,28 @@ class RoleController extends Controller
      *
      * Renames the role and/or re-syncs its permissions. Base roles cannot be
      * renamed (their permissions can still be adjusted).
-     * Requires the Administrador role.
+     * Requires the `roles.update` permission.
      */
+    #[ResponseAttribute(
+        status: RoleResponseConst::ROLE_UPDATED['status'],
+        description: RoleResponseConst::ROLE_UPDATED['description'],
+        examples: [RoleResponseConst::ROLE_UPDATED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: RoleResponseConst::PROTECTED_ROLE['status'],
+        description: RoleResponseConst::PROTECTED_ROLE['description'],
+        examples: [RoleResponseConst::PROTECTED_ROLE['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::UNAUTHENTICATED['status'],
+        description: GlobalResponseConst::UNAUTHENTICATED['description'],
+        examples: [GlobalResponseConst::UNAUTHENTICATED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::FORBIDDEN['status'],
+        description: GlobalResponseConst::FORBIDDEN['description'],
+        examples: [GlobalResponseConst::FORBIDDEN['examples']],
+    )]
     public function update(UpdateRoleRequest $request, Role $role): JsonResponse
     {
         $data = $request->validated();
@@ -106,8 +179,28 @@ class RoleController extends Controller
      * Delete role.
      *
      * Deletes a role. System base roles cannot be deleted.
-     * Requires the Administrador role.
+     * Requires the `roles.delete` permission.
      */
+    #[ResponseAttribute(
+        status: RoleResponseConst::ROLE_DELETED_NO_CONTENT['status'],
+        description: RoleResponseConst::ROLE_DELETED_NO_CONTENT['description'],
+        examples: RoleResponseConst::ROLE_DELETED_NO_CONTENT['examples'],
+    )]
+    #[ResponseAttribute(
+        status: RoleResponseConst::PROTECTED_ROLE['status'],
+        description: RoleResponseConst::PROTECTED_ROLE['description'],
+        examples: [RoleResponseConst::PROTECTED_ROLE['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::UNAUTHENTICATED['status'],
+        description: GlobalResponseConst::UNAUTHENTICATED['description'],
+        examples: [GlobalResponseConst::UNAUTHENTICATED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::FORBIDDEN['status'],
+        description: GlobalResponseConst::FORBIDDEN['description'],
+        examples: [GlobalResponseConst::FORBIDDEN['examples']],
+    )]
     public function destroy(Role $role): Response|JsonResponse
     {
         if ($this->isProtected($role)) {
@@ -123,8 +216,23 @@ class RoleController extends Controller
      * List permissions.
      *
      * Returns all available permissions (to build the role management UI).
-     * Requires the Administrador role.
+     * Requires the `roles.read` permission.
      */
+    #[ResponseAttribute(
+        status: RoleResponseConst::PERMISSIONS_LIST['status'],
+        description: RoleResponseConst::PERMISSIONS_LIST['description'],
+        examples: [RoleResponseConst::PERMISSIONS_LIST['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::UNAUTHENTICATED['status'],
+        description: GlobalResponseConst::UNAUTHENTICATED['description'],
+        examples: [GlobalResponseConst::UNAUTHENTICATED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::FORBIDDEN['status'],
+        description: GlobalResponseConst::FORBIDDEN['description'],
+        examples: [GlobalResponseConst::FORBIDDEN['examples']],
+    )]
     public function permissions(): JsonResponse
     {
         $permissions = Permission::orderBy('name')->pluck('name');
@@ -140,6 +248,26 @@ class RoleController extends Controller
      *
      * Replaces the user's role. Requires the `users.update` permission.
      */
+    #[ResponseAttribute(
+        status: RoleResponseConst::ROLE_ASSIGNED['status'],
+        description: RoleResponseConst::ROLE_ASSIGNED['description'],
+        examples: [RoleResponseConst::ROLE_ASSIGNED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::UNAUTHENTICATED['status'],
+        description: GlobalResponseConst::UNAUTHENTICATED['description'],
+        examples: [GlobalResponseConst::UNAUTHENTICATED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::FORBIDDEN['status'],
+        description: GlobalResponseConst::FORBIDDEN['description'],
+        examples: [GlobalResponseConst::FORBIDDEN['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::VALIDATION_ERROR['status'],
+        description: GlobalResponseConst::VALIDATION_ERROR['description'],
+        examples: [GlobalResponseConst::VALIDATION_ERROR['examples']],
+    )]
     public function assignToUser(AssignRoleRequest $request, User $user): JsonResponse
     {
         $user->syncRoles([$request->validated()['role']]);

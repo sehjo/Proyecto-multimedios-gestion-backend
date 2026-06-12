@@ -17,6 +17,7 @@ class AssignRoleRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // @example Medico
             'role' => ['required', 'string', 'exists:roles,name'],
         ];
     }
