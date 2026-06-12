@@ -2,52 +2,32 @@
 
 namespace Database\Seeders;
 
+use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        // IDs de user_type: 1=Administrador, 2=Medico, 3=Enfermero, 4=Paciente
-        DB::table('users')->insert([
-            [
-                'name'         => 'Carlos',
-                'lastname'     => 'Ramírez',
-                'email'        => 'admin@ccss.cr',
-                'password'     => Hash::make('Admin1234!'),
-                'user_type_id' => 1,
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ],
-            [
-                'name'         => 'Laura',
-                'lastname'     => 'Soto',
-                'email'        => 'doctor1@ccss.cr',
-                'password'     => Hash::make('Doctor1234!'),
-                'user_type_id' => 2,
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ],
-            [
-                'name'         => 'Andrés',
-                'lastname'     => 'Mora',
-                'email'        => 'doctor2@ccss.cr',
-                'password'     => Hash::make('Doctor1234!'),
-                'user_type_id' => 2,
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ],
-            [
-                'name'         => 'María',
-                'lastname'     => 'González',
-                'email'        => 'nurse1@ccss.cr',
-                'password'     => Hash::make('Nurse1234!'),
-                'user_type_id' => 3,
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ],
-        ]);
+        $users = [
+            ['Carlos', 'Ramírez',  'admin@ccss.cr',   'Admin1234!',  'Administrador'],
+            ['Laura',  'Soto',     'doctor1@ccss.cr', 'Doctor1234!', 'Medico'],
+            ['Andrés', 'Mora',     'doctor2@ccss.cr', 'Doctor1234!', 'Medico'],
+            ['María',  'González', 'nurse1@ccss.cr',  'Nurse1234!',  'Enfermero'],
+        ];
+
+        foreach ($users as [$name, $lastname, $email, $password, $role]) {
+            $user = User::firstOrCreate(
+                ['email' => $email],
+                [
+                    'name'     => $name,
+                    'lastname' => $lastname,
+                    'password' => Hash::make($password),
+                ]
+            );
+
+            $user->syncRoles([$role]);
+        }
     }
 }

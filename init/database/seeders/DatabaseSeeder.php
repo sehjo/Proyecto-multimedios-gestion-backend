@@ -13,8 +13,10 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            // Roles y permisos (Spatie). Debe ir antes que UserSeeder.
+            RolePermissionSeeder::class,
+
             // Catalogos (sin dependencias de FK)
-            UserTypeSeeder::class,
             PrioritySeeder::class,
             DrugsSeeder::class,
 
@@ -24,7 +26,7 @@ class DatabaseSeeder extends Seeder
             // Depende de disease + drugs
             DiseaseHasTreatmentsSeeder::class,
 
-            // Depende de users_types
+            // Depende de los roles creados por RolePermissionSeeder
             UserSeeder::class,
 
             // Depende de disease + users

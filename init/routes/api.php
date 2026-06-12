@@ -4,7 +4,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\UsersTypeController;
 use App\Http\Controllers\Api\PriorityController;
 use App\Http\Controllers\Api\DrugController;
 use App\Http\Controllers\Api\DiseaseController;
@@ -36,7 +35,6 @@ Route::prefix('auth')->middleware('throttle:5,1')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::apiResource('users', UserController::class);
-Route::apiResource('user-types', UsersTypeController::class);
 
 /*
 |--------------------------------------------------------------------------

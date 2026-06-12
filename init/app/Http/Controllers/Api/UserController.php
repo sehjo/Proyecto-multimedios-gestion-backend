@@ -27,9 +27,14 @@ class UserController extends Controller
      */
     public function store(UserRequest $request): JsonResponse
     {
-        $user = User::create($request->validated());
+        $data = $request->validated();
+        $role = $data['role'];
+        unset($data['role']);
 
-        return response()->json(new UserResource($user));
+        $user = User::create($data);
+        $user->assignRole($role);
+
+        return response()->json(new UserResource($user->load('roles')));
     }
 
     /**
@@ -45,9 +50,17 @@ class UserController extends Controller
      */
     public function update(UserRequest $request, User $user): JsonResponse
     {
-        $user->update($request->validated());
+        $data = $request->validated();
+        $role = $data['role'] ?? null;
+        unset($data['role']);
 
-        return response()->json(new UserResource($user));
+        $user->update($data);
+
+        if ($role !== null) {
+            $user->syncRoles([$role]);
+        }
+
+        return response()->json(new UserResource($user->load('roles')));
     }
 
     /**

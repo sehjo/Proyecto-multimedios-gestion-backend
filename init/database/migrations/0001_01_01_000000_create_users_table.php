@@ -11,20 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // users_types must exist before users (FK dependency)
-        Schema::create('users_types', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->timestamps();
-        });
-
+        // Los roles se manejan con Spatie Permission (tablas roles / model_has_roles),
+        // por eso ya no existe la tabla users_types ni la FK user_type_id.
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('name');
             $table->string('lastname');
             $table->string('email')->unique();
             $table->string('password');
-            $table->foreignId('user_type_id')->constrained('users_types');
             $table->timestamps();
         });
     }
@@ -35,6 +29,5 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('users');
-        Schema::dropIfExists('users_types');
     }
 };
