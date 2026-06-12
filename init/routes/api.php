@@ -6,6 +6,8 @@ use Illuminate\Support\Str;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\RoleController;
+use App\Http\Controllers\Api\LogUserController;
+use App\Http\Controllers\Api\LogRoleController;
 use App\Http\Controllers\Api\PriorityController;
 use App\Http\Controllers\Api\DrugController;
 use App\Http\Controllers\Api\DiseaseController;
@@ -115,6 +117,16 @@ Route::middleware('auth:sanctum')->group(function () use ($registerCrud) {
         ->middleware('permission:roles.update')->whereNumber('role')->name('roles.update');
     Route::delete('roles/{role}', [RoleController::class, 'destroy'])
         ->middleware('permission:roles.delete')->whereNumber('role')->name('roles.destroy');
+
+    /*
+    |----------------------------------------------------------------------
+    | Audit logs (read-only)
+    |----------------------------------------------------------------------
+    */
+    Route::get('logs/users', [LogUserController::class, 'index'])
+        ->middleware('permission:logs_users.read')->name('logs.users');
+    Route::get('logs/roles', [LogRoleController::class, 'index'])
+        ->middleware('permission:logs_roles.read')->name('logs.roles');
 
     /*
     |----------------------------------------------------------------------

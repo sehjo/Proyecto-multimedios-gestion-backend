@@ -50,8 +50,19 @@ class PermissionCatalog
     ];
 
     /**
-     * Returns the names of EVERY permission ("<module>.<action>"), derived from
-     * MODULES x ACTIONS.
+     * Read-only audit-log permissions. Logs are never created/updated/deleted,
+     * so these stand alone (only the `.read` action) and are NOT cascaded.
+     *
+     * @var array<int, string>
+     */
+    public const LOG_PERMISSIONS = [
+        'logs_users.read',
+        'logs_roles.read',
+    ];
+
+    /**
+     * Returns the names of EVERY permission, derived from MODULES x ACTIONS
+     * plus the standalone read-only log permissions.
      *
      * @return array<int, string>
      */
@@ -64,7 +75,7 @@ class PermissionCatalog
             }
         }
 
-        return $names;
+        return array_merge($names, self::LOG_PERMISSIONS);
     }
 
     /**

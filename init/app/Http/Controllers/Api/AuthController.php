@@ -7,8 +7,10 @@ use App\Http\Requests\Auth\HasPermissionRequest;
 use App\Http\Resources\UserResource;
 use App\Http\Responses\AuthResponseConst;
 use App\Http\Responses\GlobalResponseConst;
+use App\Enums\UserLogAction;
 use App\Mail\PasswordResetMail;
 use App\Models\User;
+use App\Support\AuditLogger;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -245,6 +247,11 @@ class AuthController extends Controller
 
         // Remove the used reset token.
         DB::table('password_reset_tokens')->where('token', $hashedToken)->delete();
+
+        // Audit: self password reset. The password value is never stored.
+        AuditLogger::userLog(UserLogAction::PasswordReset, $user, $user, [
+            'password' => AuditLogger::maskedPassword(),
+        ]);
 
         return response()->json([
             'message' => 'Tu contraseña se restableció correctamente. Inicia sesión con tu nueva contraseña.',

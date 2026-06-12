@@ -10,6 +10,8 @@ use App\Http\Resources\RoleResource;
 use App\Http\Responses\GlobalResponseConst;
 use App\Http\Responses\RoleResponseConst;
 use App\Models\User;
+use App\Enums\RoleLogAction;
+use App\Support\AuditLogger;
 use App\Support\PermissionCatalog;
 use Dedoc\Scramble\Attributes\Response as ResponseAttribute;
 use Illuminate\Http\JsonResponse;
@@ -124,7 +126,15 @@ class RoleController extends Controller
             $role->syncPermissions(PermissionCatalog::expand($data['permissions']));
         }
 
-        return response()->json(new RoleResource($role->load('permissions')), 201);
+        $role->load('permissions');
+
+        // Audit: record the created role and its final (post-cascade) permissions.
+        AuditLogger::roleLog(RoleLogAction::Create, $request->user(), $role, [
+            'name'        => ['old' => null, 'new' => $role->name],
+            'permissions' => ['old' => [], 'new' => $role->permissions->pluck('name')->all()],
+        ]);
+
+        return response()->json(new RoleResource($role), 201);
     }
 
     /**
@@ -158,6 +168,10 @@ class RoleController extends Controller
     {
         $data = $request->validated();
 
+        // Snapshots before the change to build the audit diff.
+        $oldName        = $role->name;
+        $oldPermissions = $role->permissions->pluck('name')->sort()->values()->all();
+
         if (array_key_exists('name', $data) && $data['name'] !== $role->name) {
             if ($this->isProtected($role)) {
                 return $this->protectedRoleError('Este rol del sistema no se puede renombrar.');
@@ -172,7 +186,22 @@ class RoleController extends Controller
             $role->syncPermissions(PermissionCatalog::expand($data['permissions']));
         }
 
-        return response()->json(new RoleResource($role->load('permissions')));
+        $role->load('permissions');
+
+        // Audit: only the fields that changed; nothing logged if nothing changed.
+        $fields         = [];
+        $newPermissions = $role->permissions->pluck('name')->sort()->values()->all();
+        if ($role->name !== $oldName) {
+            $fields['name'] = ['old' => $oldName, 'new' => $role->name];
+        }
+        if ($newPermissions !== $oldPermissions) {
+            $fields['permissions'] = ['old' => $oldPermissions, 'new' => $newPermissions];
+        }
+        if (! empty($fields)) {
+            AuditLogger::roleLog(RoleLogAction::Update, $request->user(), $role, $fields);
+        }
+
+        return response()->json(new RoleResource($role));
     }
 
     /**
@@ -206,6 +235,11 @@ class RoleController extends Controller
         if ($this->isProtected($role)) {
             return $this->protectedRoleError('Este rol del sistema no se puede eliminar.');
         }
+
+        // Audit before deleting; the changes JSON preserves the role name.
+        AuditLogger::roleLog(RoleLogAction::Delete, request()->user(), $role, [
+            'name' => ['old' => $role->name, 'new' => null],
+        ]);
 
         $role->delete();
 
@@ -270,7 +304,19 @@ class RoleController extends Controller
     )]
     public function assignToUser(AssignRoleRequest $request, User $user): JsonResponse
     {
-        $user->syncRoles([$request->validated()['role']]);
+        $newRole  = $request->validated()['role'];
+        $oldRoles = $user->getRoleNames()->all();
+
+        $user->syncRoles([$newRole]);
+        $newRoles = $user->getRoleNames()->all();
+
+        // Audit: record the role change only if it actually changed.
+        if ($newRoles !== $oldRoles) {
+            AuditLogger::roleLog(RoleLogAction::Assign, $request->user(), $newRole, [
+                'target_user' => ['id' => $user->id, 'name' => $user->name],
+                'roles'       => ['old' => $oldRoles, 'new' => $newRoles],
+            ]);
+        }
 
         return response()->json([
             'success' => true,

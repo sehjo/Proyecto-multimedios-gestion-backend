@@ -9,6 +9,8 @@ use Illuminate\Http\Response;
 use Illuminate\Http\JsonResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
+use App\Enums\UserLogAction;
+use App\Support\AuditLogger;
 use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
@@ -58,6 +60,14 @@ class UserController extends Controller
         $user = User::create($data);
         $user->assignRole($role);
 
+        // Audit: record every relevant field on creation (old = null).
+        AuditLogger::userLog(UserLogAction::Create, $request->user(), $user, [
+            'name'     => ['old' => null, 'new' => $user->name],
+            'lastname' => ['old' => null, 'new' => $user->lastname],
+            'email'    => ['old' => null, 'new' => $user->email],
+            'role'     => ['old' => null, 'new' => $role],
+        ]);
+
         return response()->json(new UserResource($user->load('roles')));
     }
 
@@ -83,10 +93,27 @@ class UserController extends Controller
         $role = $data['role'] ?? null;
         unset($data['role']);
 
+        // Snapshot before the change to build the audit diff.
+        $oldRole = $user->getRoleNames()->first();
+        $before  = ['name' => $user->name, 'lastname' => $user->lastname, 'email' => $user->email];
+
         $user->update($data);
 
         if ($role !== null) {
             $user->syncRoles([$role]);
+        }
+
+        // Audit: only the fields that actually changed; nothing logged if no change.
+        $fields = AuditLogger::diff($before, [
+            'name'     => $user->name,
+            'lastname' => $user->lastname,
+            'email'    => $user->email,
+        ]);
+        if ($role !== null && $role !== $oldRole) {
+            $fields['role'] = ['old' => $oldRole, 'new' => $role];
+        }
+        if (! empty($fields)) {
+            AuditLogger::userLog(UserLogAction::Update, $request->user(), $user, $fields);
         }
 
         return response()->json(new UserResource($user->load('roles')));
@@ -99,6 +126,13 @@ class UserController extends Controller
      */
     public function destroy(User $user): Response
     {
+        // Audit before deleting. The changes JSON preserves the id/name even
+        // though target_user_id is nulled by the FK once the user is gone.
+        AuditLogger::userLog(UserLogAction::Delete, request()->user(), $user, [
+            'name'  => ['old' => $user->name, 'new' => null],
+            'email' => ['old' => $user->email, 'new' => null],
+        ]);
+
         $user->delete();
 
         return response()->noContent();
