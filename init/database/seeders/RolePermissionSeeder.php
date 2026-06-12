@@ -10,14 +10,14 @@ use Spatie\Permission\PermissionRegistrar;
 class RolePermissionSeeder extends Seeder
 {
     /**
-     * Guard usado por la API. Sanctum resuelve el provider 'users', cuyo guard
-     * por defecto es 'web', por eso los roles/permisos se crean con guard 'web'.
+     * Guard used by the API. Sanctum resolves the 'users' provider, whose
+     * default guard is 'web', so roles/permissions are created with guard 'web'.
      */
     private const GUARD = 'web';
 
     /**
-     * Módulos del sistema y las acciones disponibles por módulo.
-     * Genera permisos con el formato "<modulo>.<accion>".
+     * System modules and the actions available per module.
+     * Generates permissions in the "<module>.<action>" format.
      */
     private const MODULES = [
         'users'      => ['view', 'create', 'update', 'delete'],
@@ -32,10 +32,10 @@ class RolePermissionSeeder extends Seeder
 
     public function run(): void
     {
-        // Limpiar la caché de permisos de Spatie antes de sembrar.
+        // Clear Spatie's permission cache before seeding.
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        // 1. Crear todos los permisos.
+        // 1. Create every permission.
         foreach (self::MODULES as $module => $actions) {
             foreach ($actions as $action) {
                 Permission::firstOrCreate([
@@ -45,11 +45,11 @@ class RolePermissionSeeder extends Seeder
             }
         }
 
-        // 2. Crear roles y asignar permisos según la matriz aprobada.
+        // 2. Create roles and assign permissions per the approved matrix.
         $this->makeRole('Administrador', $this->allPermissions());
 
         $this->makeRole('Medico', $this->permissionsFor([
-            // ver + gestionar (CRUD completo) de los módulos clínicos y catálogos
+            // view + manage (full CRUD) of the clinical modules and catalogs
             'patients'   => ['view', 'create', 'update', 'delete'],
             'diagnoses'  => ['view', 'create', 'update', 'delete'],
             'diseases'   => ['view', 'create', 'update', 'delete'],
@@ -59,15 +59,15 @@ class RolePermissionSeeder extends Seeder
         ]));
 
         $this->makeRole('Enfermero', $this->permissionsFor([
-            // ver pacientes/enfermedades; ver + crear diagnósticos (sin eliminar)
+            // view patients/diseases; view + create diagnoses (no delete)
             'patients'  => ['view'],
             'diagnoses' => ['view', 'create'],
             'diseases'  => ['view'],
         ]));
 
         $this->makeRole('Paciente', $this->permissionsFor([
-            // solo lectura de sus datos clínicos
-            // TODO(scoping): limitar a "solo lo suyo" cuando exista la relación patient<->user
+            // read-only access to their clinical data
+            // TODO(scoping): limit to "their own" once the patient<->user relation exists
             'patients'  => ['view'],
             'diagnoses' => ['view'],
             'diseases'  => ['view'],
@@ -77,7 +77,7 @@ class RolePermissionSeeder extends Seeder
     }
 
     /**
-     * Crea (o recupera) un rol y le sincroniza el set de permisos dado.
+     * Creates (or fetches) a role and syncs the given set of permissions to it.
      *
      * @param  array<int, string>  $permissions
      */
@@ -88,7 +88,7 @@ class RolePermissionSeeder extends Seeder
     }
 
     /**
-     * Devuelve los nombres de TODOS los permisos definidos.
+     * Returns the names of ALL defined permissions.
      *
      * @return array<int, string>
      */
@@ -105,7 +105,7 @@ class RolePermissionSeeder extends Seeder
     }
 
     /**
-     * Construye nombres de permisos a partir de un mapa modulo => [acciones].
+     * Builds permission names from a module => [actions] map.
      *
      * @param  array<string, array<int, string>>  $map
      * @return array<int, string>

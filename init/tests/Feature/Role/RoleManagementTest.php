@@ -9,10 +9,10 @@ use Tests\Feature\Concerns\InteractsWithAuth;
 use Tests\TestCase;
 
 /**
- * Gestión de roles y permisos (solo Administrador).
+ * Role and permission management (Administrador only).
  *
- * Cubre: autorización, CRUD de roles, protección de roles base,
- * listado de permisos, validación y asignación de rol a usuario.
+ * Covers: authorization, role CRUD, base-role protection, permission listing,
+ * validation and assigning a role to a user.
  */
 class RoleManagementTest extends TestCase
 {
@@ -27,18 +27,18 @@ class RoleManagementTest extends TestCase
 
     /*
     |--------------------------------------------------------------------------
-    | Autorización
+    | Authorization
     |--------------------------------------------------------------------------
     */
 
-    public function test_no_autenticado_no_accede_a_roles(): void
+    public function test_unauthenticated_cannot_access_roles(): void
     {
         $this->getJson('/api/roles')
             ->assertStatus(401)
             ->assertJson(['error_code' => 'UNAUTHENTICATED']);
     }
 
-    public function test_no_admin_no_accede_a_roles(): void
+    public function test_non_admin_cannot_access_roles(): void
     {
         $this->getJson('/api/roles', $this->headersForRole('Medico'))
             ->assertStatus(403)
@@ -47,11 +47,11 @@ class RoleManagementTest extends TestCase
 
     /*
     |--------------------------------------------------------------------------
-    | Listado y detalle
+    | Listing and detail
     |--------------------------------------------------------------------------
     */
 
-    public function test_admin_lista_roles_con_permisos(): void
+    public function test_admin_lists_roles_with_permissions(): void
     {
         $this->getJson('/api/roles', $this->headersForRole('Administrador'))
             ->assertOk()
@@ -59,7 +59,7 @@ class RoleManagementTest extends TestCase
             ->assertJsonStructure([['id', 'name', 'guard_name', 'permissions']]);
     }
 
-    public function test_admin_lista_permisos_disponibles(): void
+    public function test_admin_lists_available_permissions(): void
     {
         $this->getJson('/api/roles/permissions', $this->headersForRole('Administrador'))
             ->assertOk()
@@ -69,11 +69,11 @@ class RoleManagementTest extends TestCase
 
     /*
     |--------------------------------------------------------------------------
-    | Crear
+    | Create
     |--------------------------------------------------------------------------
     */
 
-    public function test_admin_crea_rol_con_permisos(): void
+    public function test_admin_creates_role_with_permissions(): void
     {
         $response = $this->postJson('/api/roles', [
             'name'        => 'Recepcion',
@@ -88,25 +88,25 @@ class RoleManagementTest extends TestCase
         $this->assertTrue(Role::findByName('Recepcion', 'web')->hasPermissionTo('patients.view'));
     }
 
-    public function test_no_crea_rol_con_nombre_duplicado(): void
+    public function test_does_not_create_role_with_duplicate_name(): void
     {
         $this->postJson('/api/roles', ['name' => 'Medico'], $this->headersForRole('Administrador'))
             ->assertStatus(422)
             ->assertJsonValidationErrors('name');
     }
 
-    public function test_no_crea_rol_con_nombre_vacio(): void
+    public function test_does_not_create_role_with_blank_name(): void
     {
         $this->postJson('/api/roles', ['name' => '   '], $this->headersForRole('Administrador'))
             ->assertStatus(422)
             ->assertJsonValidationErrors('name');
     }
 
-    public function test_no_crea_rol_con_permiso_inexistente(): void
+    public function test_does_not_create_role_with_nonexistent_permission(): void
     {
         $this->postJson('/api/roles', [
-            'name'        => 'Otro',
-            'permissions' => ['no.existe'],
+            'name'        => 'Other',
+            'permissions' => ['does.not.exist'],
         ], $this->headersForRole('Administrador'))
             ->assertStatus(422)
             ->assertJsonValidationErrors('permissions.0');
@@ -114,13 +114,13 @@ class RoleManagementTest extends TestCase
 
     /*
     |--------------------------------------------------------------------------
-    | Actualizar
+    | Update
     |--------------------------------------------------------------------------
     */
 
-    public function test_admin_actualiza_permisos_de_rol(): void
+    public function test_admin_updates_role_permissions(): void
     {
-        $role = Role::create(['name' => 'Temporal', 'guard_name' => 'web']);
+        $role = Role::create(['name' => 'Temporary', 'guard_name' => 'web']);
 
         $this->putJson("/api/roles/{$role->id}", [
             'permissions' => ['drugs.view', 'drugs.create'],
@@ -132,29 +132,29 @@ class RoleManagementTest extends TestCase
         $this->assertTrue($role->fresh()->hasPermissionTo('drugs.create'));
     }
 
-    public function test_admin_renombra_rol_no_protegido(): void
+    public function test_admin_renames_non_protected_role(): void
     {
-        $role = Role::create(['name' => 'Temporal', 'guard_name' => 'web']);
+        $role = Role::create(['name' => 'Temporary', 'guard_name' => 'web']);
 
-        $this->putJson("/api/roles/{$role->id}", ['name' => 'Renombrado'], $this->headersForRole('Administrador'))
+        $this->putJson("/api/roles/{$role->id}", ['name' => 'Renamed'], $this->headersForRole('Administrador'))
             ->assertOk()
-            ->assertJsonPath('name', 'Renombrado');
+            ->assertJsonPath('name', 'Renamed');
 
-        $this->assertDatabaseHas('roles', ['id' => $role->id, 'name' => 'Renombrado']);
+        $this->assertDatabaseHas('roles', ['id' => $role->id, 'name' => 'Renamed']);
     }
 
-    public function test_no_renombra_rol_base(): void
+    public function test_does_not_rename_base_role(): void
     {
         $role = Role::findByName('Administrador', 'web');
 
-        $this->putJson("/api/roles/{$role->id}", ['name' => 'OtroNombre'], $this->headersForRole('Administrador'))
+        $this->putJson("/api/roles/{$role->id}", ['name' => 'OtherName'], $this->headersForRole('Administrador'))
             ->assertStatus(422)
             ->assertJson(['error_code' => 'PROTECTED_ROLE']);
 
         $this->assertDatabaseHas('roles', ['id' => $role->id, 'name' => 'Administrador']);
     }
 
-    public function test_si_ajusta_permisos_de_rol_base(): void
+    public function test_can_adjust_permissions_of_base_role(): void
     {
         $role = Role::findByName('Paciente', 'web');
 
@@ -168,13 +168,13 @@ class RoleManagementTest extends TestCase
 
     /*
     |--------------------------------------------------------------------------
-    | Eliminar
+    | Delete
     |--------------------------------------------------------------------------
     */
 
-    public function test_admin_elimina_rol_no_protegido(): void
+    public function test_admin_deletes_non_protected_role(): void
     {
-        $role = Role::create(['name' => 'Temporal', 'guard_name' => 'web']);
+        $role = Role::create(['name' => 'Temporary', 'guard_name' => 'web']);
 
         $this->deleteJson("/api/roles/{$role->id}", [], $this->headersForRole('Administrador'))
             ->assertNoContent();
@@ -182,7 +182,7 @@ class RoleManagementTest extends TestCase
         $this->assertDatabaseMissing('roles', ['id' => $role->id]);
     }
 
-    public function test_no_elimina_rol_base(): void
+    public function test_does_not_delete_base_role(): void
     {
         $role = Role::findByName('Medico', 'web');
 
@@ -195,11 +195,11 @@ class RoleManagementTest extends TestCase
 
     /*
     |--------------------------------------------------------------------------
-    | Asignar rol a usuario
+    | Assign a role to a user
     |--------------------------------------------------------------------------
     */
 
-    public function test_admin_asigna_rol_a_usuario(): void
+    public function test_admin_assigns_role_to_user(): void
     {
         $user = User::factory()->create();
         $user->assignRole('Paciente');
@@ -211,23 +211,23 @@ class RoleManagementTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonFragment(['Enfermero']);
 
-        // syncRoles reemplaza: el usuario queda SOLO con el nuevo rol.
+        // syncRoles replaces: the user ends up with ONLY the new role.
         $this->assertTrue($user->fresh()->hasRole('Enfermero'));
         $this->assertFalse($user->fresh()->hasRole('Paciente'));
     }
 
-    public function test_no_asigna_rol_inexistente(): void
+    public function test_does_not_assign_nonexistent_role(): void
     {
         $user = User::factory()->create();
 
         $this->putJson("/api/users/{$user->id}/role", [
-            'role' => 'NoExiste',
+            'role' => 'DoesNotExist',
         ], $this->headersForRole('Administrador'))
             ->assertStatus(422)
             ->assertJsonValidationErrors('role');
     }
 
-    public function test_no_admin_no_asigna_rol(): void
+    public function test_non_admin_cannot_assign_role(): void
     {
         $user = User::factory()->create();
 

@@ -19,7 +19,7 @@ class RoleResource extends JsonResource
             'id'          => $this->id,
             'name'        => $this->name,
             'guard_name'  => $this->guard_name,
-            // Permisos asignados al rol (solo cuando vienen cargados).
+            // Permissions assigned to the role (only when eager-loaded).
             'permissions' => $this->whenLoaded('permissions', fn () => $this->permissions->pluck('name')->values()),
             'created_at'  => $this->created_at,
             'updated_at'  => $this->updated_at,

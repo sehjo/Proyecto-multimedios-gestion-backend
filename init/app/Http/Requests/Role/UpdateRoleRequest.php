@@ -20,7 +20,7 @@ class UpdateRoleRequest extends FormRequest
         $roleId = $this->route('role')?->id;
 
         return [
-            // 'name' es opcional: se puede actualizar solo los permisos.
+            // 'name' is optional: permissions can be updated on their own.
             'name'          => ['sometimes', 'string', 'max:50', 'not_regex:/^\s*$/', Rule::unique('roles', 'name')->ignore($roleId)],
             'permissions'   => ['sometimes', 'array'],
             'permissions.*' => ['string', 'exists:permissions,name'],

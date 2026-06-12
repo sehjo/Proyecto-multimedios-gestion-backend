@@ -18,10 +18,13 @@ use Illuminate\Validation\ValidationException;
 class AuthController extends Controller
 {
     /**
-     * Authenticate the user and issue a Sanctum token.
+     * Log in.
      *
-     * POST /login
-     * Body: { email, password }
+     * Validates the credentials and returns a Bearer token (Sanctum) along with
+     * the user data (including their roles). The token must be sent in the
+     * `Authorization: Bearer <token>` header on protected routes.
+     *
+     * @unauthenticated
      */
     public function login(Request $request): JsonResponse
     {
@@ -47,9 +50,10 @@ class AuthController extends Controller
     }
 
     /**
-     * Revoke the current access token.
+     * Log out.
      *
-     * POST /logout
+     * Revokes the authenticated user's current access token. After this, the
+     * same token is no longer valid and any request using it returns 401.
      */
     public function logout(Request $request): JsonResponse
     {
@@ -59,10 +63,13 @@ class AuthController extends Controller
     }
 
     /**
-     * Generate a password reset token and send it via email.
+     * Request a password reset link.
      *
-     * POST /auth/forgot-password
-     * Body: { email }
+     * Generates a reset token and emails a link to the given address. For
+     * security it always responds with a generic message, whether or not the
+     * email exists (to avoid revealing which emails are registered).
+     *
+     * @unauthenticated
      */
     public function forgotPassword(Request $request): JsonResponse
     {
@@ -111,10 +118,13 @@ class AuthController extends Controller
     }
 
     /**
-     * Validate the reset token and update the user's password.
+     * Reset the password using the token received by email.
      *
-     * POST /auth/reset-password
-     * Body: { token, password }
+     * Validates the token (valid and not expired), updates the password and
+     * revokes all of the user's active sessions. The reset token is deleted
+     * after use.
+     *
+     * @unauthenticated
      */
     public function resetPassword(Request $request): JsonResponse
     {

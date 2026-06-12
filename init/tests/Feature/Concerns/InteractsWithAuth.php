@@ -6,14 +6,14 @@ use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 
 /**
- * Helpers para los tests que necesitan usuarios autenticados con un rol.
- * Siembra los roles/permisos de Spatie y emite tokens Sanctum.
+ * Helpers for tests that need authenticated users with a role.
+ * Seeds Spatie's roles/permissions and issues Sanctum tokens.
  */
 trait InteractsWithAuth
 {
     /**
-     * Siembra los roles y permisos de la aplicación (RolePermissionSeeder).
-     * Llamar en setUp() o al inicio del test antes de crear usuarios con rol.
+     * Seeds the application's roles and permissions (RolePermissionSeeder).
+     * Call it in setUp() or at the start of the test before creating users with a role.
      */
     protected function seedRolesAndPermissions(): void
     {
@@ -21,7 +21,7 @@ trait InteractsWithAuth
     }
 
     /**
-     * Crea un usuario con el rol indicado.
+     * Creates a user with the given role.
      */
     protected function userWithRole(string $role): User
     {
@@ -32,7 +32,7 @@ trait InteractsWithAuth
     }
 
     /**
-     * Devuelve los headers de autenticación (Bearer token Sanctum) para un usuario.
+     * Returns the authentication headers (Sanctum Bearer token) for a user.
      *
      * @return array<string, string>
      */
@@ -47,7 +47,7 @@ trait InteractsWithAuth
     }
 
     /**
-     * Atajo: crea un usuario con rol y devuelve sus headers autenticados.
+     * Shortcut: creates a user with a role and returns its authenticated headers.
      *
      * @return array<string, string>
      */

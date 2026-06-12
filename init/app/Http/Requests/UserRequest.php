@@ -21,7 +21,7 @@ class UserRequest extends FormRequest
             'lastname' => ['required', 'string', 'max:255'],
             'email'    => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($userId)],
             'password' => [$this->isMethod('POST') ? 'required' : 'sometimes', 'string', 'min:8', 'max:255'],
-            // El rol se valida contra los roles de Spatie (tabla roles). Nunca permisos directos.
+            // The role is validated against Spatie's roles (roles table). Never direct permissions.
             'role'     => ['required', 'string', 'exists:roles,name'],
         ];
     }

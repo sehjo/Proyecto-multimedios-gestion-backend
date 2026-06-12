@@ -14,23 +14,24 @@ use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
 /**
- * Gestión de roles y permisos (solo Administrador).
+ * Role and permission management (Administrador only).
  *
- * Se trabaja únicamente con permisos asignados A ROLES; nunca permisos
- * directos a usuarios.
+ * Permissions are only ever assigned TO ROLES; never directly to users.
  */
 class RoleController extends Controller
 {
     /**
-     * Roles base del sistema. No se pueden renombrar ni eliminar, pero sí
-     * se les pueden ajustar los permisos.
+     * System base roles. They cannot be renamed or deleted, but their
+     * permissions can still be adjusted.
      *
      * @var array<int, string>
      */
     private const PROTECTED_ROLES = ['Administrador', 'Medico', 'Enfermero', 'Paciente'];
 
     /**
-     * Listar todos los roles con sus permisos.
+     * List roles.
+     *
+     * Returns all roles with their permissions. Requires the Administrador role.
      */
     public function index(): JsonResponse
     {
@@ -40,7 +41,9 @@ class RoleController extends Controller
     }
 
     /**
-     * Mostrar un rol y sus permisos.
+     * Show role.
+     *
+     * Returns a role and its permissions. Requires the Administrador role.
      */
     public function show(Role $role): JsonResponse
     {
@@ -48,7 +51,10 @@ class RoleController extends Controller
     }
 
     /**
-     * Crear un rol nuevo y, opcionalmente, asignarle permisos.
+     * Create role.
+     *
+     * Creates a new role and, optionally, assigns it permissions.
+     * Requires the Administrador role.
      */
     public function store(StoreRoleRequest $request): JsonResponse
     {
@@ -67,8 +73,11 @@ class RoleController extends Controller
     }
 
     /**
-     * Actualizar un rol: renombrarlo y/o re-sincronizar sus permisos.
-     * Los roles base no se pueden renombrar (sí ajustar permisos).
+     * Update role.
+     *
+     * Renames the role and/or re-syncs its permissions. Base roles cannot be
+     * renamed (their permissions can still be adjusted).
+     * Requires the Administrador role.
      */
     public function update(UpdateRoleRequest $request, Role $role): JsonResponse
     {
@@ -91,7 +100,10 @@ class RoleController extends Controller
     }
 
     /**
-     * Eliminar un rol. Los roles base del sistema no se pueden eliminar.
+     * Delete role.
+     *
+     * Deletes a role. System base roles cannot be deleted.
+     * Requires the Administrador role.
      */
     public function destroy(Role $role): Response|JsonResponse
     {
@@ -105,7 +117,10 @@ class RoleController extends Controller
     }
 
     /**
-     * Listar todos los permisos disponibles (para construir la UI de roles).
+     * List permissions.
+     *
+     * Returns all available permissions (to build the role management UI).
+     * Requires the Administrador role.
      */
     public function permissions(): JsonResponse
     {
@@ -118,7 +133,10 @@ class RoleController extends Controller
     }
 
     /**
-     * Asignar (reemplazar) el rol de un usuario. Solo roles, nunca permisos directos.
+     * Assign a role to a user.
+     *
+     * Replaces the user's role. Only roles are assigned, never direct permissions.
+     * Requires the Administrador role.
      */
     public function assignToUser(AssignRoleRequest $request, User $user): JsonResponse
     {

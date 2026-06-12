@@ -13,11 +13,11 @@ use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
- * HU-003 — Recuperación de contraseña por enlace al correo.
+ * HU-003 — Password recovery via an email link.
  *
- * Cubre forgot-password (envío de enlace, anti-enumeración) y reset-password
- * (token válido/ inválido/ expirado, actualización de contraseña y revocación
- * de sesiones).
+ * Covers forgot-password (sending the link, anti-enumeration) and
+ * reset-password (valid/invalid/expired token, password update and session
+ * revocation).
  */
 class PasswordResetTest extends TestCase
 {
@@ -29,31 +29,31 @@ class PasswordResetTest extends TestCase
     |--------------------------------------------------------------------------
     */
 
-    public function test_forgot_password_envia_correo_y_guarda_token(): void
+    public function test_forgot_password_sends_email_and_stores_token(): void
     {
         Mail::fake();
-        $user = User::factory()->create(['email' => 'persona@ccss.cr']);
+        $user = User::factory()->create(['email' => 'person@ccss.cr']);
 
-        $this->postJson('/api/auth/forgot-password', ['email' => 'persona@ccss.cr'])
+        $this->postJson('/api/auth/forgot-password', ['email' => 'person@ccss.cr'])
             ->assertOk();
 
-        $this->assertDatabaseHas('password_reset_tokens', ['email' => 'persona@ccss.cr']);
+        $this->assertDatabaseHas('password_reset_tokens', ['email' => 'person@ccss.cr']);
         Mail::assertSent(PasswordResetMail::class);
     }
 
-    public function test_forgot_password_no_revela_si_el_correo_existe(): void
+    public function test_forgot_password_does_not_reveal_if_email_exists(): void
     {
         Mail::fake();
 
-        // Correo inexistente: misma respuesta genérica, sin enviar correo.
-        $response = $this->postJson('/api/auth/forgot-password', ['email' => 'noexiste@ccss.cr']);
+        // Non-existent email: same generic response, no email sent.
+        $response = $this->postJson('/api/auth/forgot-password', ['email' => 'missing@ccss.cr']);
 
         $response->assertOk();
-        $this->assertDatabaseMissing('password_reset_tokens', ['email' => 'noexiste@ccss.cr']);
+        $this->assertDatabaseMissing('password_reset_tokens', ['email' => 'missing@ccss.cr']);
         Mail::assertNothingSent();
     }
 
-    public function test_forgot_password_requiere_email(): void
+    public function test_forgot_password_requires_email(): void
     {
         $this->postJson('/api/auth/forgot-password', [])
             ->assertStatus(422)
@@ -67,8 +67,8 @@ class PasswordResetTest extends TestCase
     */
 
     /**
-     * Genera un token de reset válido para un usuario (replica lo que hace
-     * forgot-password: guarda el hash del token plano).
+     * Generates a valid reset token for a user (mirrors what forgot-password
+     * does: stores the hash of the plain token).
      */
     private function createResetToken(User $user, ?Carbon $createdAt = null): string
     {
@@ -82,64 +82,64 @@ class PasswordResetTest extends TestCase
         return $plain;
     }
 
-    public function test_reset_password_actualiza_la_contrasena(): void
+    public function test_reset_password_updates_the_password(): void
     {
-        $user  = User::factory()->create(['password' => Hash::make('ViejaPass123!')]);
+        $user  = User::factory()->create(['password' => Hash::make('OldPass123!')]);
         $token = $this->createResetToken($user);
 
         $this->postJson('/api/auth/reset-password', [
             'token'    => $token,
-            'password' => 'NuevaPass123!',
+            'password' => 'NewPass123!',
         ])->assertOk();
 
-        // La nueva contraseña es válida y la vieja ya no.
-        $this->assertTrue(Hash::check('NuevaPass123!', $user->fresh()->password));
+        // The new password is valid and the old one no longer is.
+        $this->assertTrue(Hash::check('NewPass123!', $user->fresh()->password));
 
-        // El token usado se elimina.
+        // The used token is removed.
         $this->assertDatabaseMissing('password_reset_tokens', ['email' => $user->email]);
     }
 
-    public function test_reset_password_revoca_las_sesiones_activas(): void
+    public function test_reset_password_revokes_active_sessions(): void
     {
         $user = User::factory()->create();
-        $user->createToken('sesion-activa'); // sesión existente
+        $user->createToken('active-session'); // existing session
         $this->assertDatabaseCount('personal_access_tokens', 1);
 
         $token = $this->createResetToken($user);
 
         $this->postJson('/api/auth/reset-password', [
             'token'    => $token,
-            'password' => 'NuevaPass123!',
+            'password' => 'NewPass123!',
         ])->assertOk();
 
-        // Todas las sesiones previas se invalidan tras cambiar la contraseña.
+        // All previous sessions are invalidated after changing the password.
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
-    public function test_reset_password_token_invalido(): void
+    public function test_reset_password_invalid_token(): void
     {
         $this->postJson('/api/auth/reset-password', [
-            'token'    => 'token-que-no-existe',
-            'password' => 'NuevaPass123!',
+            'token'    => 'token-that-does-not-exist',
+            'password' => 'NewPass123!',
         ])->assertStatus(422);
     }
 
-    public function test_reset_password_token_expirado(): void
+    public function test_reset_password_expired_token(): void
     {
         $user  = User::factory()->create();
-        // Token creado hace 61 minutos (expira a los 60).
+        // Token created 61 minutes ago (expires after 60).
         $token = $this->createResetToken($user, now()->subMinutes(61));
 
         $this->postJson('/api/auth/reset-password', [
             'token'    => $token,
-            'password' => 'NuevaPass123!',
+            'password' => 'NewPass123!',
         ])->assertStatus(422);
 
-        // El token expirado se limpia.
+        // The expired token is cleaned up.
         $this->assertDatabaseMissing('password_reset_tokens', ['email' => $user->email]);
     }
 
-    public function test_reset_password_requiere_password_minimo(): void
+    public function test_reset_password_requires_minimum_password(): void
     {
         $user  = User::factory()->create();
         $token = $this->createResetToken($user);

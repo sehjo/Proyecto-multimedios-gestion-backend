@@ -11,8 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Los roles se manejan con Spatie Permission (tablas roles / model_has_roles),
-        // por eso ya no existe la tabla users_types ni la FK user_type_id.
+        // Roles are handled with Spatie Permission (roles / model_has_roles tables),
+        // so the users_types table and the user_type_id FK no longer exist.
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('name');

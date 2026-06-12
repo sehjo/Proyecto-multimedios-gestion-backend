@@ -7,35 +7,35 @@ use Illuminate\Database\Seeder;
 class DatabaseSeeder extends Seeder
 {
     /**
-     * Poblar la base de datos de la aplicacion.
-     * El orden importa por las restricciones de llaves foraneas.
+     * Seed the application's database.
+     * Order matters because of the foreign key constraints.
      */
     public function run(): void
     {
         $this->call([
-            // Roles y permisos (Spatie). Debe ir antes que UserSeeder.
+            // Roles and permissions (Spatie). Must run before UserSeeder.
             RolePermissionSeeder::class,
 
-            // Catalogos (sin dependencias de FK)
+            // Catalogs (no FK dependencies)
             PrioritySeeder::class,
             DrugsSeeder::class,
 
-            // Depende de priority
+            // Depends on priority
             DiseaseSeeder::class,
 
-            // Depende de disease + drugs
+            // Depends on disease + drugs
             DiseaseHasTreatmentsSeeder::class,
 
-            // Depende de los roles creados por RolePermissionSeeder
+            // Depends on the roles created by RolePermissionSeeder
             UserSeeder::class,
 
-            // Depende de disease + users
+            // Depends on disease + users
             PatientSeeder::class,
 
-            // Depende de disease + patient + users
+            // Depends on disease + patient + users
             DiagnosesSeeder::class,
 
-            // Depende de diagnoses + drugs
+            // Depends on diagnoses + drugs
             DiagnosesHasTreatmentsSeeder::class,
         ]);
     }

@@ -19,8 +19,8 @@ class UserResource extends JsonResource
             'name'        => $this->name,
             'lastname'    => $this->lastname,
             'email'       => $this->email,
-            // Roles del usuario (Spatie). El front usa esto para pintar la UI;
-            // la autorización real vive en el backend (middleware role/permission).
+            // User roles (Spatie). The front-end uses this to render the UI;
+            // the real authorization lives in the backend (role/permission middleware).
             'roles'       => $this->getRoleNames(),
             'permissions' => $this->getAllPermissions()->pluck('name')->values(),
             'created_at'  => $this->created_at,

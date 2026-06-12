@@ -18,17 +18,17 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Middleware de autorización de Spatie (roles y permisos).
+        // Spatie authorization middleware (roles and permissions).
         $middleware->alias([
             'role'               => RoleMiddleware::class,
             'permission'         => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
         ]);
 
-        // Ejecutar la autorización (Spatie) ANTES del route-model binding.
-        // Si no, pedir un ID inexistente devuelve 404 antes de chequear el
-        // permiso, y un atacante sin permiso podría distinguir qué IDs existen
-        // (404 vs 403). Con esto, sin permiso siempre es 403, exista o no el ID.
+        // Run authorization (Spatie) BEFORE route-model binding. Otherwise a
+        // request for a non-existent id returns 404 before the permission is
+        // checked, letting an unauthorized attacker tell which ids exist
+        // (404 vs 403). With this, no permission is always 403, id or not.
         $middleware->prependToPriorityList(
             before: \Illuminate\Routing\Middleware\SubstituteBindings::class,
             prepend: RoleMiddleware::class,
@@ -43,7 +43,7 @@ return Application::configure(basePath: dirname(__DIR__))
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // 422 — Errores de validación (formato existente del proyecto).
+        // 422 — Validation errors (existing project format).
         $exceptions->render(function (\Illuminate\Validation\ValidationException $e, Request $request) {
             if ($request->is('api/*')) {
                 return response()->json([
@@ -55,11 +55,11 @@ return Application::configure(basePath: dirname(__DIR__))
                             return str_replace('The ', 'El campo ', $msg); // Small hack or use lang files
                         }, $messages);
                     })->toArray(),
-                ], 422); // 422 Unprocessable Entity es el código HTTP correspondiente
+                ], 422); // 422 Unprocessable Entity is the matching HTTP status code
             }
         });
 
-        // 401 — No autenticado (sin token, token inválido o expirado). HU-004.
+        // 401 — Not authenticated (no token, invalid or expired token). HU-004.
         $exceptions->render(function (AuthenticationException $e, Request $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return response()->json([
@@ -70,7 +70,7 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        // 403 — Autenticado pero sin el rol/permiso requerido (Spatie). HU-004.
+        // 403 — Authenticated but missing the required role/permission (Spatie). HU-004.
         $exceptions->render(function (UnauthorizedException $e, Request $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return response()->json([

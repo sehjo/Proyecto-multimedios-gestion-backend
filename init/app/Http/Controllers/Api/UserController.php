@@ -13,7 +13,9 @@ use App\Http\Resources\UserResource;
 class UserController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * List users.
+     *
+     * Returns the paginated list of users with their roles. Requires the Administrador role.
      */
     public function index(Request $request)
     {
@@ -23,7 +25,9 @@ class UserController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Create user.
+     *
+     * Creates a user and assigns the role given in `role`. Requires the Administrador role.
      */
     public function store(UserRequest $request): JsonResponse
     {
@@ -38,7 +42,9 @@ class UserController extends Controller
     }
 
     /**
-     * Display the specified resource.
+     * Show user.
+     *
+     * Returns a user by id. Requires the Administrador role.
      */
     public function show(User $user): JsonResponse
     {
@@ -46,7 +52,10 @@ class UserController extends Controller
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update user.
+     *
+     * Updates the user's data and, if `role` is sent, replaces their role.
+     * Requires the Administrador role.
      */
     public function update(UserRequest $request, User $user): JsonResponse
     {
@@ -64,7 +73,9 @@ class UserController extends Controller
     }
 
     /**
-     * Delete the specified resource.
+     * Delete user.
+     *
+     * Deletes the given user. Requires the Administrador role.
      */
     public function destroy(User $user): Response
     {

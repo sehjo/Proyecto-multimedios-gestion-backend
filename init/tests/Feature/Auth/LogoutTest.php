@@ -7,12 +7,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * HU-002 — El usuario autenticado puede cerrar sesión.
+ * HU-002 — The authenticated user can log out.
  *
- * Cubre:
- *  - El token se elimina al cerrar sesión.
- *  - Tras cerrar sesión, el mismo token ya no da acceso a rutas protegidas.
- *  - Cerrar sesión sin estar autenticado -> 401.
+ * Covers:
+ *  - The token is deleted on logout.
+ *  - After logout, the same token no longer grants access to protected routes.
+ *  - Logging out while unauthenticated -> 401.
  */
 class LogoutTest extends TestCase
 {
@@ -23,7 +23,7 @@ class LogoutTest extends TestCase
         return $user->createToken('test-token')->plainTextToken;
     }
 
-    public function test_logout_elimina_el_token(): void
+    public function test_logout_deletes_the_token(): void
     {
         $user  = User::factory()->create();
         $token = $this->loginAndGetToken($user);
@@ -36,11 +36,11 @@ class LogoutTest extends TestCase
         ])->assertOk()
           ->assertJson(['message' => 'Sesión cerrada correctamente.']);
 
-        // El token actual fue revocado (borrado de la tabla).
+        // The current token was revoked (removed from the table).
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
-    public function test_token_no_sirve_despues_de_logout(): void
+    public function test_token_does_not_work_after_logout(): void
     {
         $user  = User::factory()->create();
         $token = $this->loginAndGetToken($user);
@@ -51,16 +51,16 @@ class LogoutTest extends TestCase
             'Accept'        => 'application/json',
         ];
 
-        // Cierra sesión.
+        // Log out.
         $this->postJson('/api/logout', [], $headers)->assertOk();
 
-        // El token usado quedó revocado: ya no existe en la BD, por lo que
-        // ninguna petición posterior puede autenticarse con él.
-        // (Verificado además contra el servidor real: reusar el token da 401.)
+        // The used token is revoked: it no longer exists in the DB, so no later
+        // request can authenticate with it.
+        // (Also verified against the real server: reusing the token returns 401.)
         $this->assertDatabaseMissing('personal_access_tokens', ['id' => $tokenId]);
     }
 
-    public function test_logout_sin_sesion_devuelve_401(): void
+    public function test_logout_without_session_returns_401(): void
     {
         $this->postJson('/api/logout')
             ->assertStatus(401)

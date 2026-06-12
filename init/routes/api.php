@@ -16,7 +16,7 @@ use App\Http\Controllers\Api\DiseaseHasTreatmentController;
 
 /*
 |--------------------------------------------------------------------------
-| Rutas públicas (sin autenticación) — HU-003, HU-004
+| Public routes (no authentication) — HU-003, HU-004
 |--------------------------------------------------------------------------
 */
 Route::post('/login', [AuthController::class, 'login']);
@@ -28,19 +28,19 @@ Route::prefix('auth')->middleware('throttle:5,1')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| Rutas protegidas — requieren sesión activa (Sanctum). HU-004
+| Protected routes — require an active session (Sanctum). HU-004
 |--------------------------------------------------------------------------
-| Todo lo interno vive dentro de este grupo. Sin token válido → 401.
-| La autorización fina por rol/permiso (Spatie) se aplica por acción.
+| Everything internal lives inside this group. Without a valid token → 401.
+| Fine-grained role/permission authorization (Spatie) is applied per action.
 */
 /**
- * Registra un CRUD de API aplicando UN permiso por acción según la convención
- * "<permission>.<view|create|update|delete>". Cada verbo HTTP queda atado a su
- * permiso correcto (a diferencia de apiResource()->middleware([...]), que aplica
- * todos los middleware a todas las rutas).
+ * Registers an API CRUD applying ONE permission per action following the
+ * "<permission>.<view|create|update|delete>" convention. Each HTTP verb is
+ * bound to its correct permission (unlike apiResource()->middleware([...]),
+ * which applies every middleware to every route).
  *
- * Es un closure (no una función global) para que el archivo de rutas pueda
- * recargarse varias veces —p. ej. en los tests— sin "Cannot redeclare".
+ * It is a closure (not a global function) so the routes file can be reloaded
+ * several times —e.g. in the tests— without a "Cannot redeclare" error.
  */
 $registerCrud = function (string $uri, string $controller, string $permission): void {
     $param = Str::singular(str_replace('-', '_', $uri));
@@ -63,26 +63,26 @@ $registerCrud = function (string $uri, string $controller, string $permission): 
 
 Route::middleware('auth:sanctum')->group(function () use ($registerCrud) {
 
-    // Usuario autenticado actual y cierre de sesión (HU-002).
+    // Current authenticated user and logout (HU-002).
     Route::get('/user', fn (Request $request) => $request->user());
     Route::post('/logout', [AuthController::class, 'logout']);
 
     /*
     |----------------------------------------------------------------------
-    | Gestión de usuarios — solo Administrador
+    | User management — Administrador only
     |----------------------------------------------------------------------
     */
     Route::apiResource('users', UserController::class)
         ->middleware('role:Administrador');
 
-    // Asignar/cambiar el rol de un usuario (solo roles, nunca permisos directos).
+    // Assign/change a user's role (roles only, never direct permissions).
     Route::put('users/{user}/role', [RoleController::class, 'assignToUser'])
         ->middleware('role:Administrador')->whereNumber('user');
 
     /*
     |----------------------------------------------------------------------
-    | Gestión de roles y permisos — solo Administrador
-    | Rutas estáticas antes que las dinámicas {role}.
+    | Role and permission management — Administrador only
+    | Static routes before the dynamic {role} ones.
     |----------------------------------------------------------------------
     */
     Route::middleware('role:Administrador')->group(function () {
@@ -92,8 +92,8 @@ Route::middleware('auth:sanctum')->group(function () use ($registerCrud) {
 
     /*
     |----------------------------------------------------------------------
-    | Recursos con permiso fino por acción (view/create/update/delete).
-    | Se define una ruta por método para que cada verbo exija UN permiso.
+    | Resources with fine-grained per-action permission (view/create/update/delete).
+    | One route per method is defined so each verb requires ONE permission.
     |----------------------------------------------------------------------
     */
     $registerCrud('priorities', PriorityController::class, 'priorities');
