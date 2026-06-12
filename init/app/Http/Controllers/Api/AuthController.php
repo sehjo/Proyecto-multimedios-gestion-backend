@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\HasPermissionRequest;
 use App\Http\Resources\UserResource;
 use App\Mail\PasswordResetMail;
 use App\Models\User;
@@ -60,6 +61,23 @@ class AuthController extends Controller
         $request->user()->currentAccessToken()->delete();
 
         return response()->json(['message' => 'Sesión cerrada correctamente.']);
+    }
+
+    /**
+     * Check whether the authenticated user has a given permission.
+     *
+     * Lets the front-end ask if the user holds a permission (e.g. to show or
+     * hide a button). The real authorization still lives in the route
+     * middleware; this is only a convenience query.
+     */
+    public function hasPermission(HasPermissionRequest $request): JsonResponse
+    {
+        $permission = $request->validated()['permission'];
+
+        return response()->json([
+            'permission' => $permission,
+            'granted'    => $request->user()->can($permission),
+        ]);
     }
 
     /**

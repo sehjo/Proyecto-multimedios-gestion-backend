@@ -46,10 +46,10 @@ $registerCrud = function (string $uri, string $controller, string $permission): 
     $param = Str::singular(str_replace('-', '_', $uri));
 
     Route::get($uri, [$controller, 'index'])
-        ->middleware("permission:{$permission}.view")->name("{$uri}.index");
+        ->middleware("permission:{$permission}.read")->name("{$uri}.index");
 
     Route::get("{$uri}/{{$param}}", [$controller, 'show'])
-        ->middleware("permission:{$permission}.view")->name("{$uri}.show");
+        ->middleware("permission:{$permission}.read")->name("{$uri}.show");
 
     Route::post($uri, [$controller, 'store'])
         ->middleware("permission:{$permission}.create")->name("{$uri}.store");
@@ -67,28 +67,54 @@ Route::middleware('auth:sanctum')->group(function () use ($registerCrud) {
     Route::get('/user', fn (Request $request) => $request->user());
     Route::post('/logout', [AuthController::class, 'logout']);
 
+    // Permission check: lets the front ask whether the user has a permission.
+    Route::get('auth/has-permission', [AuthController::class, 'hasPermission']);
+
     /*
     |----------------------------------------------------------------------
-    | User management — Administrador only
+    | User management — fine-grained permissions (users.*)
+    | Static routes before the resource to avoid wildcard conflicts.
+    | One route per verb so each action requires exactly ONE permission
+    | (apiResource()->middleware([...]) would apply them all to every route).
     |----------------------------------------------------------------------
     */
-    Route::apiResource('users', UserController::class)
-        ->middleware('role:Administrador');
+    Route::get('stats/users/by-role', [UserController::class, 'statsByRole'])
+        ->middleware('permission:users.read');
 
-    // Assign/change a user's role (roles only, never direct permissions).
+    Route::get('users', [UserController::class, 'index'])
+        ->middleware('permission:users.read')->name('users.index');
+    Route::get('users/{user}', [UserController::class, 'show'])
+        ->middleware('permission:users.read')->whereNumber('user')->name('users.show');
+    Route::post('users', [UserController::class, 'store'])
+        ->middleware('permission:users.create')->name('users.store');
+    Route::match(['put', 'patch'], 'users/{user}', [UserController::class, 'update'])
+        ->middleware('permission:users.update')->whereNumber('user')->name('users.update');
+    Route::delete('users/{user}', [UserController::class, 'destroy'])
+        ->middleware('permission:users.delete')->whereNumber('user')->name('users.destroy');
+
+    // Assign/change a user's role.
     Route::put('users/{user}/role', [RoleController::class, 'assignToUser'])
-        ->middleware('role:Administrador')->whereNumber('user');
+        ->middleware('permission:users.update')->whereNumber('user');
 
     /*
     |----------------------------------------------------------------------
-    | Role and permission management — Administrador only
+    | Role and permission management — fine-grained permissions (roles.*)
     | Static routes before the dynamic {role} ones.
     |----------------------------------------------------------------------
     */
-    Route::middleware('role:Administrador')->group(function () {
-        Route::get('roles/permissions', [RoleController::class, 'permissions']);
-        Route::apiResource('roles', RoleController::class);
-    });
+    Route::get('roles/permissions', [RoleController::class, 'permissions'])
+        ->middleware('permission:roles.read');
+
+    Route::get('roles', [RoleController::class, 'index'])
+        ->middleware('permission:roles.read')->name('roles.index');
+    Route::get('roles/{role}', [RoleController::class, 'show'])
+        ->middleware('permission:roles.read')->whereNumber('role')->name('roles.show');
+    Route::post('roles', [RoleController::class, 'store'])
+        ->middleware('permission:roles.create')->name('roles.store');
+    Route::match(['put', 'patch'], 'roles/{role}', [RoleController::class, 'update'])
+        ->middleware('permission:roles.update')->whereNumber('role')->name('roles.update');
+    Route::delete('roles/{role}', [RoleController::class, 'destroy'])
+        ->middleware('permission:roles.delete')->whereNumber('role')->name('roles.destroy');
 
     /*
     |----------------------------------------------------------------------

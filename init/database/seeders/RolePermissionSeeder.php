@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Support\PermissionCatalog;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -9,68 +10,47 @@ use Spatie\Permission\PermissionRegistrar;
 
 class RolePermissionSeeder extends Seeder
 {
-    /**
-     * Guard used by the API. Sanctum resolves the 'users' provider, whose
-     * default guard is 'web', so roles/permissions are created with guard 'web'.
-     */
-    private const GUARD = 'web';
-
-    /**
-     * System modules and the actions available per module.
-     * Generates permissions in the "<module>.<action>" format.
-     */
-    private const MODULES = [
-        'users'      => ['view', 'create', 'update', 'delete'],
-        'roles'      => ['view', 'create', 'update', 'delete'],
-        'patients'   => ['view', 'create', 'update', 'delete'],
-        'diagnoses'  => ['view', 'create', 'update', 'delete'],
-        'diseases'   => ['view', 'create', 'update', 'delete'],
-        'drugs'      => ['view', 'create', 'update', 'delete'],
-        'priorities' => ['view', 'create', 'update', 'delete'],
-        'treatments' => ['view', 'create', 'update', 'delete'],
-    ];
-
     public function run(): void
     {
         // Clear Spatie's permission cache before seeding.
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        // 1. Create every permission.
-        foreach (self::MODULES as $module => $actions) {
-            foreach ($actions as $action) {
-                Permission::firstOrCreate([
-                    'name'       => "{$module}.{$action}",
-                    'guard_name' => self::GUARD,
-                ]);
-            }
+        // 1. Create every permission, derived from the catalog (no hardcoding).
+        foreach (PermissionCatalog::allPermissionNames() as $name) {
+            Permission::firstOrCreate([
+                'name'       => $name,
+                'guard_name' => PermissionCatalog::GUARD,
+            ]);
         }
 
-        // 2. Create roles and assign permissions per the approved matrix.
-        $this->makeRole('Administrador', $this->allPermissions());
+        // 2. Define roles by derivation/filtering, never by manual lists.
+        //    The cascade (create/update/delete imply read) is applied by the catalog.
 
-        $this->makeRole('Medico', $this->permissionsFor([
-            // view + manage (full CRUD) of the clinical modules and catalogs
-            'patients'   => ['view', 'create', 'update', 'delete'],
-            'diagnoses'  => ['view', 'create', 'update', 'delete'],
-            'diseases'   => ['view', 'create', 'update', 'delete'],
-            'drugs'      => ['view', 'create', 'update', 'delete'],
-            'priorities' => ['view', 'create', 'update', 'delete'],
-            'treatments' => ['view', 'create', 'update', 'delete'],
+        // Administrador: every permission.
+        $this->makeRole('Administrador', PermissionCatalog::allPermissionNames());
+
+        // Medico: everything except user/role management.
+        $medical = array_values(array_filter(
+            PermissionCatalog::allPermissionNames(),
+            fn (string $name) => ! str_starts_with($name, 'users.')
+                && ! str_starts_with($name, 'roles.'),
+        ));
+        $this->makeRole('Medico', $medical);
+
+        // Enfermero: view patients/diseases; view + create diagnoses.
+        // The cascade guarantees diagnoses.read alongside diagnoses.create.
+        $this->makeRole('Enfermero', PermissionCatalog::forModules([
+            'patients'  => ['read'],
+            'diagnoses' => ['read', 'create'],
+            'diseases'  => ['read'],
         ]));
 
-        $this->makeRole('Enfermero', $this->permissionsFor([
-            // view patients/diseases; view + create diagnoses (no delete)
-            'patients'  => ['view'],
-            'diagnoses' => ['view', 'create'],
-            'diseases'  => ['view'],
-        ]));
-
-        $this->makeRole('Paciente', $this->permissionsFor([
-            // read-only access to their clinical data
-            // TODO(scoping): limit to "their own" once the patient<->user relation exists
-            'patients'  => ['view'],
-            'diagnoses' => ['view'],
-            'diseases'  => ['view'],
+        // Paciente: read-only on their clinical data.
+        // TODO(scoping): limit to "their own" once the patient<->user relation exists.
+        $this->makeRole('Paciente', PermissionCatalog::forModules([
+            'patients'  => ['read'],
+            'diagnoses' => ['read'],
+            'diseases'  => ['read'],
         ]));
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -83,42 +63,7 @@ class RolePermissionSeeder extends Seeder
      */
     private function makeRole(string $name, array $permissions): void
     {
-        $role = Role::firstOrCreate(['name' => $name, 'guard_name' => self::GUARD]);
+        $role = Role::firstOrCreate(['name' => $name, 'guard_name' => PermissionCatalog::GUARD]);
         $role->syncPermissions($permissions);
-    }
-
-    /**
-     * Returns the names of ALL defined permissions.
-     *
-     * @return array<int, string>
-     */
-    private function allPermissions(): array
-    {
-        $names = [];
-        foreach (self::MODULES as $module => $actions) {
-            foreach ($actions as $action) {
-                $names[] = "{$module}.{$action}";
-            }
-        }
-
-        return $names;
-    }
-
-    /**
-     * Builds permission names from a module => [actions] map.
-     *
-     * @param  array<string, array<int, string>>  $map
-     * @return array<int, string>
-     */
-    private function permissionsFor(array $map): array
-    {
-        $names = [];
-        foreach ($map as $module => $actions) {
-            foreach ($actions as $action) {
-                $names[] = "{$module}.{$action}";
-            }
-        }
-
-        return $names;
     }
 }

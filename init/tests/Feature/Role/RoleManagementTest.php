@@ -64,7 +64,7 @@ class RoleManagementTest extends TestCase
         $this->getJson('/api/roles/permissions', $this->headersForRole('Administrador'))
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonFragment(['patients.view']);
+            ->assertJsonFragment(['patients.read']);
     }
 
     /*
@@ -77,15 +77,15 @@ class RoleManagementTest extends TestCase
     {
         $response = $this->postJson('/api/roles', [
             'name'        => 'Recepcion',
-            'permissions' => ['patients.view', 'priorities.view'],
+            'permissions' => ['patients.read', 'priorities.read'],
         ], $this->headersForRole('Administrador'));
 
         $response->assertStatus(201)
             ->assertJsonPath('name', 'Recepcion')
-            ->assertJsonFragment(['patients.view']);
+            ->assertJsonFragment(['patients.read']);
 
         $this->assertDatabaseHas('roles', ['name' => 'Recepcion', 'guard_name' => 'web']);
-        $this->assertTrue(Role::findByName('Recepcion', 'web')->hasPermissionTo('patients.view'));
+        $this->assertTrue(Role::findByName('Recepcion', 'web')->hasPermissionTo('patients.read'));
     }
 
     public function test_does_not_create_role_with_duplicate_name(): void
@@ -123,10 +123,10 @@ class RoleManagementTest extends TestCase
         $role = Role::create(['name' => 'Temporary', 'guard_name' => 'web']);
 
         $this->putJson("/api/roles/{$role->id}", [
-            'permissions' => ['drugs.view', 'drugs.create'],
+            'permissions' => ['drugs.read', 'drugs.create'],
         ], $this->headersForRole('Administrador'))
             ->assertOk()
-            ->assertJsonFragment(['drugs.view'])
+            ->assertJsonFragment(['drugs.read'])
             ->assertJsonFragment(['drugs.create']);
 
         $this->assertTrue($role->fresh()->hasPermissionTo('drugs.create'));
@@ -159,11 +159,11 @@ class RoleManagementTest extends TestCase
         $role = Role::findByName('Paciente', 'web');
 
         $this->putJson("/api/roles/{$role->id}", [
-            'permissions' => ['diseases.view'],
+            'permissions' => ['diseases.read'],
         ], $this->headersForRole('Administrador'))
             ->assertOk();
 
-        $this->assertTrue($role->fresh()->hasPermissionTo('diseases.view'));
+        $this->assertTrue($role->fresh()->hasPermissionTo('diseases.read'));
     }
 
     /*

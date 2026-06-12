@@ -9,6 +9,7 @@ use Illuminate\Http\Response;
 use Illuminate\Http\JsonResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
+use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
@@ -22,6 +23,25 @@ class UserController extends Controller
         $users = User::paginate();
 
         return UserResource::collection($users);
+    }
+
+    /**
+     * User stats by role.
+     *
+     * Returns the user count per role (for dashboards). Requires the
+     * `users.read` permission.
+     */
+    public function statsByRole(): JsonResponse
+    {
+        // Count users per role. Every defined role is included (0 if unused).
+        $counts = Role::orderBy('name')
+            ->get()
+            ->mapWithKeys(fn (Role $role) => [$role->name => $role->users()->count()]);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $counts,
+        ]);
     }
 
     /**

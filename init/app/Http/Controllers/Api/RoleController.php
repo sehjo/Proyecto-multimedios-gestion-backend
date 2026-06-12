@@ -8,6 +8,7 @@ use App\Http\Requests\Role\StoreRoleRequest;
 use App\Http\Requests\Role\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
 use App\Models\User;
+use App\Support\PermissionCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Spatie\Permission\Models\Permission;
@@ -62,11 +63,12 @@ class RoleController extends Controller
 
         $role = Role::create([
             'name'       => $data['name'],
-            'guard_name' => 'web',
+            'guard_name' => PermissionCatalog::GUARD,
         ]);
 
         if (! empty($data['permissions'])) {
-            $role->syncPermissions($data['permissions']);
+            // Apply the cascade: create/update/delete imply read.
+            $role->syncPermissions(PermissionCatalog::expand($data['permissions']));
         }
 
         return response()->json(new RoleResource($role->load('permissions')), 201);
@@ -93,7 +95,8 @@ class RoleController extends Controller
         }
 
         if (array_key_exists('permissions', $data)) {
-            $role->syncPermissions($data['permissions']);
+            // Apply the cascade: create/update/delete imply read.
+            $role->syncPermissions(PermissionCatalog::expand($data['permissions']));
         }
 
         return response()->json(new RoleResource($role->load('permissions')));
@@ -135,8 +138,7 @@ class RoleController extends Controller
     /**
      * Assign a role to a user.
      *
-     * Replaces the user's role. Only roles are assigned, never direct permissions.
-     * Requires the Administrador role.
+     * Replaces the user's role. Requires the `users.update` permission.
      */
     public function assignToUser(AssignRoleRequest $request, User $user): JsonResponse
     {
