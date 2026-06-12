@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\PriorityController;
 use App\Http\Controllers\Api\DrugController;
 use App\Http\Controllers\Api\DiseaseController;
@@ -73,6 +74,21 @@ Route::middleware('auth:sanctum')->group(function () use ($registerCrud) {
     */
     Route::apiResource('users', UserController::class)
         ->middleware('role:Administrador');
+
+    // Asignar/cambiar el rol de un usuario (solo roles, nunca permisos directos).
+    Route::put('users/{user}/role', [RoleController::class, 'assignToUser'])
+        ->middleware('role:Administrador')->whereNumber('user');
+
+    /*
+    |----------------------------------------------------------------------
+    | Gestión de roles y permisos — solo Administrador
+    | Rutas estáticas antes que las dinámicas {role}.
+    |----------------------------------------------------------------------
+    */
+    Route::middleware('role:Administrador')->group(function () {
+        Route::get('roles/permissions', [RoleController::class, 'permissions']);
+        Route::apiResource('roles', RoleController::class);
+    });
 
     /*
     |----------------------------------------------------------------------
