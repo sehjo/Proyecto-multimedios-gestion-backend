@@ -24,6 +24,23 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission'         => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
         ]);
+
+        // Ejecutar la autorización (Spatie) ANTES del route-model binding.
+        // Si no, pedir un ID inexistente devuelve 404 antes de chequear el
+        // permiso, y un atacante sin permiso podría distinguir qué IDs existen
+        // (404 vs 403). Con esto, sin permiso siempre es 403, exista o no el ID.
+        $middleware->prependToPriorityList(
+            before: \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            prepend: RoleMiddleware::class,
+        );
+        $middleware->prependToPriorityList(
+            before: \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            prepend: PermissionMiddleware::class,
+        );
+        $middleware->prependToPriorityList(
+            before: \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            prepend: RoleOrPermissionMiddleware::class,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // 422 — Errores de validación (formato existente del proyecto).
