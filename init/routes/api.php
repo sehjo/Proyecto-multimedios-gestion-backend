@@ -82,6 +82,8 @@ Route::middleware('auth:sanctum')->group(function () use ($registerCrud) {
     */
     Route::get('stats/users/by-role', [UserController::class, 'statsByRole'])
         ->middleware('permission:users.read');
+    Route::get('stats/users/by-status', [UserController::class, 'statsByStatus'])
+        ->middleware('permission:users.read');
 
     Route::get('users', [UserController::class, 'index'])
         ->middleware('permission:users.read')->name('users.index');
@@ -91,8 +93,10 @@ Route::middleware('auth:sanctum')->group(function () use ($registerCrud) {
         ->middleware('permission:users.create')->name('users.store');
     Route::match(['put', 'patch'], 'users/{user}', [UserController::class, 'update'])
         ->middleware('permission:users.update')->whereNumber('user')->name('users.update');
-    Route::delete('users/{user}', [UserController::class, 'destroy'])
-        ->middleware('permission:users.delete')->whereNumber('user')->name('users.destroy');
+
+    // Activate / deactivate a user (status change).
+    Route::patch('users/{user}/status', [UserController::class, 'changeStatus'])
+        ->middleware('permission:users.update')->whereNumber('user')->name('users.status');
 
     // Assign/change a user's role.
     Route::put('users/{user}/role', [RoleController::class, 'assignToUser'])

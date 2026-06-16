@@ -11,6 +11,7 @@ use App\Http\Responses\GlobalResponseConst;
 use App\Http\Responses\RoleResponseConst;
 use App\Models\User;
 use App\Enums\RoleLogAction;
+use App\Support\AdminGuard;
 use App\Support\AuditLogger;
 use App\Support\PermissionCatalog;
 use Dedoc\Scramble\Attributes\Response as ResponseAttribute;
@@ -306,6 +307,26 @@ class RoleController extends Controller
     {
         $newRole  = $request->validated()['role'];
         $oldRoles = $user->getRoleNames()->all();
+
+        // Self-protection: an admin cannot change their own role.
+        if ($request->user()->id === $user->id && ! in_array($newRole, $oldRoles, true)) {
+            return response()->json([
+                'success'    => false,
+                'message'    => 'No puedes cambiar tu propio rol.',
+                'error_code' => 'SELF_ACTION_FORBIDDEN',
+            ], 403);
+        }
+
+        // Anti-lockout: cannot move the last active administrator off the admin role.
+        if (in_array(AdminGuard::ADMIN_ROLE, $oldRoles, true)
+            && $newRole !== AdminGuard::ADMIN_ROLE
+            && AdminGuard::isLastActiveAdmin($user)) {
+            return response()->json([
+                'success'    => false,
+                'message'    => 'No puedes quitar el rol al último administrador activo.',
+                'error_code' => 'LAST_ADMIN',
+            ], 409);
+        }
 
         $user->syncRoles([$newRole]);
         $newRoles = $user->getRoleNames()->all();

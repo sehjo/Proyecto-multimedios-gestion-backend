@@ -1,0 +1,140 @@
+<?php
+
+namespace Tests\Feature\User;
+
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Feature\Concerns\InteractsWithAuth;
+use Tests\TestCase;
+
+/**
+ * User status (ACTIVE/INACTIVE), anti-lockout and self-protection guards.
+ */
+class UserStatusTest extends TestCase
+{
+    use RefreshDatabase;
+    use InteractsWithAuth;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seedRolesAndPermissions();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | changeStatus
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_admin_can_deactivate_a_user_and_revoke_sessions(): void
+    {
+        $target = User::factory()->create();
+        $target->assignRole('Medico');
+        $target->createToken('active'); // existing session
+        $this->assertSame(1, $target->tokens()->count());
+
+        $this->patchJson("/api/users/{$target->id}/status", ['status' => 'INACTIVE'], $this->headersForRole('Administrador'))
+            ->assertOk()
+            ->assertJsonPath('status', 'INACTIVE');
+
+        // The deactivated user's own tokens are revoked (the actor's token is untouched).
+        $this->assertSame(0, $target->fresh()->tokens()->count());
+    }
+
+    public function test_admin_can_reactivate_a_user(): void
+    {
+        $target = User::factory()->inactive()->create();
+        $target->assignRole('Medico');
+
+        $this->patchJson("/api/users/{$target->id}/status", ['status' => 'ACTIVE'], $this->headersForRole('Administrador'))
+            ->assertOk()
+            ->assertJsonPath('status', 'ACTIVE');
+    }
+
+    public function test_change_status_validates_the_value(): void
+    {
+        $target = User::factory()->create();
+
+        $this->patchJson("/api/users/{$target->id}/status", ['status' => 'BOGUS'], $this->headersForRole('Administrador'))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('status');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Self-protection
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_admin_cannot_change_their_own_status(): void
+    {
+        $admin = $this->userWithRole('Administrador');
+
+        $this->patchJson("/api/users/{$admin->id}/status", ['status' => 'INACTIVE'], $this->authHeaders($admin))
+            ->assertStatus(403)
+            ->assertJson(['error_code' => 'SELF_ACTION_FORBIDDEN']);
+    }
+
+    public function test_admin_cannot_change_their_own_role(): void
+    {
+        $admin = $this->userWithRole('Administrador');
+
+        $this->putJson("/api/users/{$admin->id}/role", ['role' => 'Medico'], $this->authHeaders($admin))
+            ->assertStatus(403)
+            ->assertJson(['error_code' => 'SELF_ACTION_FORBIDDEN']);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Anti-lockout (last active administrator)
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_cannot_deactivate_the_last_active_admin(): void
+    {
+        // A single active administrator (the test DB has no seeded users).
+        $lastAdmin = $this->userWithRole('Administrador');
+        $this->assertSame(1, \App\Support\AdminGuard::activeAdminCount());
+
+        // A non-admin user with users.update tries to deactivate the last admin.
+        $manager = User::factory()->create();
+        \Spatie\Permission\Models\Role::create(['name' => 'UserManager', 'guard_name' => 'web'])
+            ->givePermissionTo(['users.read', 'users.update']);
+        $manager->assignRole('UserManager');
+
+        $this->patchJson("/api/users/{$lastAdmin->id}/status", ['status' => 'INACTIVE'], $this->authHeaders($manager))
+            ->assertStatus(409)
+            ->assertJson(['error_code' => 'LAST_ADMIN']);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Login rejects inactive accounts
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_inactive_user_cannot_log_in(): void
+    {
+        User::factory()->inactive()->create([
+            'email'    => 'inactive@ccss.cr',
+            'password' => bcrypt('Secret123!'),
+        ]);
+
+        $this->postJson('/api/login', ['email' => 'inactive@ccss.cr', 'password' => 'Secret123!'])
+            ->assertStatus(403)
+            ->assertJson(['error_code' => 'INACTIVE_ACCOUNT']);
+    }
+
+    public function test_active_user_can_log_in(): void
+    {
+        User::factory()->create([
+            'email'    => 'active@ccss.cr',
+            'password' => bcrypt('Secret123!'),
+        ]);
+
+        $this->postJson('/api/login', ['email' => 'active@ccss.cr', 'password' => 'Secret123!'])
+            ->assertOk()
+            ->assertJsonStructure(['token', 'user']);
+    }
+}

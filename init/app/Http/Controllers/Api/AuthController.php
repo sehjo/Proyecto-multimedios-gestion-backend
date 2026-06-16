@@ -8,6 +8,7 @@ use App\Http\Resources\UserResource;
 use App\Http\Responses\AuthResponseConst;
 use App\Http\Responses\GlobalResponseConst;
 use App\Enums\UserLogAction;
+use App\Enums\UserStatus;
 use App\Mail\PasswordResetMail;
 use App\Models\User;
 use App\Support\AuditLogger;
@@ -55,6 +56,15 @@ class AuthController extends Controller
             throw ValidationException::withMessages([
                 'email' => ['Las credenciales proporcionadas son incorrectas.'],
             ]);
+        }
+
+        // Inactive accounts cannot log in.
+        if ($user->status === UserStatus::Inactive) {
+            return response()->json([
+                'success'    => false,
+                'message'    => 'Tu cuenta está inactiva. Contacta a un administrador.',
+                'error_code' => 'INACTIVE_ACCOUNT',
+            ], 403);
         }
 
         $token = $user->createToken('api-token')->plainTextToken;

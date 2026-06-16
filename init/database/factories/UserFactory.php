@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\UserStatus;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 
@@ -16,11 +17,9 @@ class UserFactory extends Factory
     protected static ?string $password;
 
     /**
-     * Define the model's default state.
-     *
-     * Refleja las columnas reales de la tabla `users` de este proyecto
-     * (name, lastname, email, password). No incluye email_verified_at ni
-     * remember_token porque la tabla no los tiene.
+     * Define the model's default state. Mirrors the real `users` columns of
+     * this project (name, lastname, email, password, status); no
+     * email_verified_at / remember_token because the table doesn't have them.
      *
      * @return array<string, mixed>
      */
@@ -31,6 +30,17 @@ class UserFactory extends Factory
             'lastname' => fake()->lastName(),
             'email' => fake()->unique()->safeEmail(),
             'password' => static::$password ??= Hash::make('password'),
+            'status' => UserStatus::Active->value,
         ];
+    }
+
+    /**
+     * Indicate that the user is inactive.
+     */
+    public function inactive(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => UserStatus::Inactive->value,
+        ]);
     }
 }

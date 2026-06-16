@@ -9,6 +9,7 @@ enum UserLogAction: string
 {
     case Create        = 'CREATE';
     case Update        = 'UPDATE';
-    case Delete        = 'DELETE';
+    case Inactive      = 'INACTIVE';
+    case Reactive      = 'REACTIVE';
     case PasswordReset = 'PASSWORD_RESET';
 }

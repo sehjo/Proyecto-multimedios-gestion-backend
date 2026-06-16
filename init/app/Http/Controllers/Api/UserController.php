@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Models\User;
 use Illuminate\Http\Request;
 use App\Http\Requests\UserRequest;
-use Illuminate\Http\Response;
+use App\Http\Requests\User\ChangeUserStatusRequest;
 use Illuminate\Http\JsonResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Enums\UserLogAction;
+use App\Enums\UserStatus;
+use App\Support\AdminGuard;
 use App\Support\AuditLogger;
 use Spatie\Permission\Models\Role;
 
@@ -47,6 +49,25 @@ class UserController extends Controller
     }
 
     /**
+     * User stats by status.
+     *
+     * Returns the user count per status (ACTIVE / INACTIVE). Requires the
+     * `users.read` permission.
+     */
+    public function statsByStatus(): JsonResponse
+    {
+        $counts = [];
+        foreach (UserStatus::cases() as $status) {
+            $counts[$status->value] = User::where('status', $status->value)->count();
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => $counts,
+        ]);
+    }
+
+    /**
      * Create user.
      *
      * Creates a user and assigns the role given in `role`. Requires the Administrador role.
@@ -57,6 +78,9 @@ class UserController extends Controller
         $role = $data['role'];
         unset($data['role']);
 
+        // New users start active.
+        $data['status'] = UserStatus::Active->value;
+
         $user = User::create($data);
         $user->assignRole($role);
 
@@ -66,6 +90,7 @@ class UserController extends Controller
             'lastname' => ['old' => null, 'new' => $user->lastname],
             'email'    => ['old' => null, 'new' => $user->email],
             'role'     => ['old' => null, 'new' => $role],
+            'status'   => ['old' => null, 'new' => $user->status->value],
         ]);
 
         return response()->json(new UserResource($user->load('roles')));
@@ -97,6 +122,16 @@ class UserController extends Controller
         $oldRole = $user->getRoleNames()->first();
         $before  = ['name' => $user->name, 'lastname' => $user->lastname, 'email' => $user->email];
 
+        // A role change has self-protection and anti-lockout guards.
+        if ($role !== null && $role !== $oldRole) {
+            if ($request->user()->id === $user->id) {
+                return $this->selfActionError('No puedes cambiar tu propio rol.');
+            }
+            if ($oldRole === AdminGuard::ADMIN_ROLE && AdminGuard::isLastActiveAdmin($user)) {
+                return $this->lastAdminError('No puedes quitar el rol al último administrador activo.');
+            }
+        }
+
         $user->update($data);
 
         if ($role !== null) {
@@ -120,21 +155,63 @@ class UserController extends Controller
     }
 
     /**
-     * Delete user.
+     * Change user status.
      *
-     * Deletes the given user. Requires the Administrador role.
+     * Activates or deactivates a user (ACTIVE ↔ INACTIVE). Deactivating a user
+     * revokes their active sessions. Requires the `users.update` permission.
      */
-    public function destroy(User $user): Response
+    public function changeStatus(ChangeUserStatusRequest $request, User $user): JsonResponse
     {
-        // Audit before deleting. The changes JSON preserves the id/name even
-        // though target_user_id is nulled by the FK once the user is gone.
-        AuditLogger::userLog(UserLogAction::Delete, request()->user(), $user, [
-            'name'  => ['old' => $user->name, 'new' => null],
-            'email' => ['old' => $user->email, 'new' => null],
-        ]);
+        $newStatus = UserStatus::from($request->validated()['status']);
+        $oldStatus = $user->status;
 
-        $user->delete();
+        // Self-protection: an admin cannot change their own status.
+        if ($request->user()->id === $user->id) {
+            return $this->selfActionError('No puedes cambiar tu propio estado.');
+        }
 
-        return response()->noContent();
+        // No-op: same status requested, nothing to do.
+        if ($newStatus === $oldStatus) {
+            return response()->json(new UserResource($user->load('roles')));
+        }
+
+        // Anti-lockout: cannot deactivate the last active administrator.
+        if ($newStatus === UserStatus::Inactive && AdminGuard::isLastActiveAdmin($user)) {
+            return $this->lastAdminError('No puedes desactivar al último administrador activo.');
+        }
+
+        $user->update(['status' => $newStatus]);
+
+        // Deactivating closes the user's sessions.
+        if ($newStatus === UserStatus::Inactive) {
+            $user->tokens()->delete();
+        }
+
+        AuditLogger::userLog(
+            $newStatus === UserStatus::Inactive ? UserLogAction::Inactive : UserLogAction::Reactive,
+            $request->user(),
+            $user,
+            ['status' => ['old' => $oldStatus->value, 'new' => $newStatus->value]],
+        );
+
+        return response()->json(new UserResource($user->load('roles')));
+    }
+
+    private function selfActionError(string $message): JsonResponse
+    {
+        return response()->json([
+            'success'    => false,
+            'message'    => $message,
+            'error_code' => 'SELF_ACTION_FORBIDDEN',
+        ], 403);
+    }
+
+    private function lastAdminError(string $message): JsonResponse
+    {
+        return response()->json([
+            'success'    => false,
+            'message'    => $message,
+            'error_code' => 'LAST_ADMIN',
+        ], 409);
     }
 }
