@@ -91,13 +91,49 @@ class RoleResponseConst
 
     public const ROLE_ASSIGNED = [
         'status'      => 200,
-        'description' => "Role assigned to the user (replaces the user's role).",
+        'description' => 'Role added to the user (a user can hold several roles).',
         'examples'    => [
             'success' => true,
             'message' => 'Rol asignado correctamente.',
             'data'    => [
                 'user_id' => 4,
-                'roles'   => ['Enfermero'],
+                'roles'   => ['Medico', 'Enfermero'],
+            ],
+        ],
+    ];
+
+    public const ROLE_REVOKED = [
+        'status'      => 200,
+        'description' => 'Role removed from the user.',
+        'examples'    => [
+            'success' => true,
+            'message' => 'Rol revocado correctamente.',
+            'data'    => [
+                'user_id' => 4,
+                'roles'   => ['Medico'],
+            ],
+        ],
+    ];
+
+    public const LAST_ROLE = [
+        'status'      => 409,
+        'description' => 'The user must keep at least one role.',
+        'examples'    => [
+            'success'    => false,
+            'message'    => 'El usuario debe conservar al menos un rol.',
+            'error_code' => 'LAST_ROLE',
+        ],
+    ];
+
+    public const ROLES_SYNCED = [
+        'status'      => 200,
+        'description' => "The user's complete role set was replaced atomically.",
+        'examples'    => [
+            'success' => true,
+            'message' => 'Roles actualizados correctamente.',
+            'data'    => [
+                'user_id' => 4,
+                'roles'   => ['Administrador'],
             ],
         ],
     ];

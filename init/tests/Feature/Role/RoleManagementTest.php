@@ -145,13 +145,31 @@ class RoleManagementTest extends TestCase
 
     public function test_does_not_rename_base_role(): void
     {
-        $role = Role::findByName('Administrador', 'web');
+        // Use a base role the acting admin does NOT hold (Paciente), so the
+        // self-protection guard doesn't fire first and we test PROTECTED_ROLE.
+        $role = Role::findByName('Paciente', 'web');
 
         $this->putJson("/api/roles/{$role->id}", ['name' => 'OtherName'], $this->headersForRole('Administrador'))
             ->assertStatus(422)
             ->assertJson(['error_code' => 'PROTECTED_ROLE']);
 
-        $this->assertDatabaseHas('roles', ['id' => $role->id, 'name' => 'Administrador']);
+        $this->assertDatabaseHas('roles', ['id' => $role->id, 'name' => 'Paciente']);
+    }
+
+    public function test_cannot_edit_permissions_of_own_role(): void
+    {
+        // The acting admin holds 'Administrador'; editing that role's permissions
+        // is blocked to prevent self-lockout.
+        $role = Role::findByName('Administrador', 'web');
+
+        $this->putJson("/api/roles/{$role->id}", [
+            'permissions' => ['users.read'], // would strip the rest from the admin
+        ], $this->headersForRole('Administrador'))
+            ->assertStatus(403)
+            ->assertJson(['error_code' => 'SELF_ACTION_FORBIDDEN']);
+
+        // Permissions were not changed.
+        $this->assertTrue($role->fresh()->hasPermissionTo('users.delete'));
     }
 
     public function test_can_adjust_permissions_of_base_role(): void
@@ -195,45 +213,184 @@ class RoleManagementTest extends TestCase
 
     /*
     |--------------------------------------------------------------------------
-    | Assign a role to a user
+    | Manage a user's roles (add / remove — a user can hold several)
     |--------------------------------------------------------------------------
     */
 
-    public function test_admin_assigns_role_to_user(): void
+    public function test_admin_adds_a_role_without_removing_others(): void
     {
         $user = User::factory()->create();
-        $user->assignRole('Paciente');
+        $user->assignRole('Medico');
 
-        $this->putJson("/api/users/{$user->id}/role", [
+        $this->postJson("/api/users/{$user->id}/roles", [
             'role' => 'Enfermero',
         ], $this->headersForRole('Administrador'))
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonFragment(['Enfermero']);
 
-        // syncRoles replaces: the user ends up with ONLY the new role.
-        $this->assertTrue($user->fresh()->hasRole('Enfermero'));
-        $this->assertFalse($user->fresh()->hasRole('Paciente'));
+        // The user now holds BOTH roles.
+        $fresh = $user->fresh();
+        $this->assertTrue($fresh->hasRole('Medico'));
+        $this->assertTrue($fresh->hasRole('Enfermero'));
     }
 
-    public function test_does_not_assign_nonexistent_role(): void
+    public function test_adding_a_role_the_user_already_has_is_idempotent(): void
     {
         $user = User::factory()->create();
+        $user->assignRole('Medico');
 
-        $this->putJson("/api/users/{$user->id}/role", [
+        $this->postJson("/api/users/{$user->id}/roles", [
+            'role' => 'Medico',
+        ], $this->headersForRole('Administrador'))->assertOk();
+
+        $this->assertCount(1, $user->fresh()->getRoleNames());
+    }
+
+    public function test_does_not_add_nonexistent_role(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('Medico');
+
+        $this->postJson("/api/users/{$user->id}/roles", [
             'role' => 'DoesNotExist',
         ], $this->headersForRole('Administrador'))
             ->assertStatus(422)
             ->assertJsonValidationErrors('role');
     }
 
-    public function test_non_admin_cannot_assign_role(): void
+    public function test_admin_removes_a_role(): void
     {
         $user = User::factory()->create();
+        $user->assignRole('Medico');
+        $user->assignRole('Enfermero');
+        $enfermero = Role::findByName('Enfermero', 'web');
 
-        $this->putJson("/api/users/{$user->id}/role", [
+        $this->deleteJson("/api/users/{$user->id}/roles/{$enfermero->id}", [], $this->headersForRole('Administrador'))
+            ->assertOk();
+
+        $fresh = $user->fresh();
+        $this->assertTrue($fresh->hasRole('Medico'));
+        $this->assertFalse($fresh->hasRole('Enfermero'));
+    }
+
+    public function test_cannot_remove_the_last_role(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('Medico');
+        $medico = Role::findByName('Medico', 'web');
+
+        $this->deleteJson("/api/users/{$user->id}/roles/{$medico->id}", [], $this->headersForRole('Administrador'))
+            ->assertStatus(409)
+            ->assertJson(['error_code' => 'LAST_ROLE']);
+
+        $this->assertTrue($user->fresh()->hasRole('Medico'));
+    }
+
+    public function test_non_admin_cannot_add_role(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('Paciente');
+
+        $this->postJson("/api/users/{$user->id}/roles", [
             'role' => 'Enfermero',
         ], $this->headersForRole('Enfermero'))
             ->assertStatus(403);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Sync a user's roles (atomic replace)
+    |--------------------------------------------------------------------------
+    */
+
+    public function test_sync_replaces_the_whole_role_set_atomically(): void
+    {
+        // The reproducible case from the report: Enfermero -> Administrador
+        // would fail with DELETE+POST (passes through 0 roles). PUT sync works.
+        $user = User::factory()->create();
+        $user->assignRole('Enfermero');
+
+        $this->putJson("/api/users/{$user->id}/roles", [
+            'roles' => ['Administrador'],
+        ], $this->headersForRole('Administrador'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['Administrador']);
+
+        $fresh = $user->fresh();
+        $this->assertTrue($fresh->hasRole('Administrador'));
+        $this->assertFalse($fresh->hasRole('Enfermero'));
+    }
+
+    public function test_sync_can_set_multiple_roles(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('Paciente');
+
+        $this->putJson("/api/users/{$user->id}/roles", [
+            'roles' => ['Medico', 'Enfermero'],
+        ], $this->headersForRole('Administrador'))->assertOk();
+
+        $fresh = $user->fresh();
+        $this->assertTrue($fresh->hasRole('Medico'));
+        $this->assertTrue($fresh->hasRole('Enfermero'));
+        $this->assertFalse($fresh->hasRole('Paciente'));
+    }
+
+    public function test_sync_rejects_empty_role_list(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('Medico');
+
+        $this->putJson("/api/users/{$user->id}/roles", [
+            'roles' => [],
+        ], $this->headersForRole('Administrador'))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('roles');
+    }
+
+    public function test_sync_rejects_nonexistent_role(): void
+    {
+        $user = User::factory()->create();
+        $user->assignRole('Medico');
+
+        $this->putJson("/api/users/{$user->id}/roles", [
+            'roles' => ['DoesNotExist'],
+        ], $this->headersForRole('Administrador'))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('roles.0');
+    }
+
+    public function test_sync_blocks_dropping_admin_from_last_active_admin(): void
+    {
+        // A single active admin; a non-admin manager with users.update tries to
+        // sync that admin's roles to a set without Administrador.
+        $lastAdmin = $this->userWithRole('Administrador');
+        $this->assertSame(1, \App\Support\AdminGuard::activeAdminCount());
+
+        $manager = User::factory()->create();
+        Role::create(['name' => 'UserManager', 'guard_name' => 'web'])
+            ->givePermissionTo(['users.read', 'users.update']);
+        $manager->assignRole('UserManager');
+
+        $this->putJson("/api/users/{$lastAdmin->id}/roles", [
+            'roles' => ['Medico'],
+        ], $this->authHeaders($manager))
+            ->assertStatus(409)
+            ->assertJson(['error_code' => 'LAST_ADMIN']);
+
+        $this->assertTrue($lastAdmin->fresh()->hasRole('Administrador'));
+    }
+
+    public function test_sync_blocks_changing_own_roles(): void
+    {
+        $admin = $this->userWithRole('Administrador');
+
+        $this->putJson("/api/users/{$admin->id}/roles", [
+            'roles' => ['Medico'],
+        ], $this->authHeaders($admin))
+            ->assertStatus(403)
+            ->assertJson(['error_code' => 'SELF_ACTION_FORBIDDEN']);
     }
 }

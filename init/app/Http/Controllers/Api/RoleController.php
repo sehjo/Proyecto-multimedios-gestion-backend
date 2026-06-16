@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Role\AssignRoleRequest;
 use App\Http\Requests\Role\StoreRoleRequest;
+use App\Http\Requests\Role\SyncRolesRequest;
 use App\Http\Requests\Role\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
 use App\Http\Responses\GlobalResponseConst;
@@ -16,6 +17,7 @@ use App\Support\AuditLogger;
 use App\Support\PermissionCatalog;
 use Dedoc\Scramble\Attributes\Response as ResponseAttribute;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -169,6 +171,16 @@ class RoleController extends Controller
     {
         $data = $request->validated();
 
+        // Self-protection: you cannot edit a role you currently hold (renaming it
+        // or changing its permissions), to avoid locking yourself out of access.
+        if ($request->user()->hasRole($role->name)) {
+            return response()->json([
+                'success'    => false,
+                'message'    => 'No puedes editar un rol que tienes asignado.',
+                'error_code' => 'SELF_ACTION_FORBIDDEN',
+            ], 403);
+        }
+
         // Snapshots before the change to build the audit diff.
         $oldName        = $role->name;
         $oldPermissions = $role->permissions->pluck('name')->sort()->values()->all();
@@ -279,9 +291,10 @@ class RoleController extends Controller
     }
 
     /**
-     * Assign a role to a user.
+     * Add a role to a user.
      *
-     * Replaces the user's role. Requires the `users.update` permission.
+     * Adds one role to the user without removing the others (a user can hold
+     * several roles). Requires the `users.update` permission.
      */
     #[ResponseAttribute(
         status: RoleResponseConst::ROLE_ASSIGNED['status'],
@@ -303,23 +316,147 @@ class RoleController extends Controller
         description: GlobalResponseConst::VALIDATION_ERROR['description'],
         examples: [GlobalResponseConst::VALIDATION_ERROR['examples']],
     )]
-    public function assignToUser(AssignRoleRequest $request, User $user): JsonResponse
+    public function addRoleToUser(AssignRoleRequest $request, User $user): JsonResponse
     {
-        $newRole  = $request->validated()['role'];
-        $oldRoles = $user->getRoleNames()->all();
-
-        // Self-protection: an admin cannot change their own role.
-        if ($request->user()->id === $user->id && ! in_array($newRole, $oldRoles, true)) {
-            return response()->json([
-                'success'    => false,
-                'message'    => 'No puedes cambiar tu propio rol.',
-                'error_code' => 'SELF_ACTION_FORBIDDEN',
-            ], 403);
+        // Self-protection: you cannot change your own roles.
+        if ($request->user()->id === $user->id) {
+            return $this->selfActionError('No puedes cambiar tus propios roles.');
         }
 
-        // Anti-lockout: cannot move the last active administrator off the admin role.
+        $role     = $request->validated()['role'];
+        $oldRoles = $user->getRoleNames()->all();
+
+        // Idempotent: nothing to do if the user already has the role.
+        if ($user->hasRole($role)) {
+            return $this->rolesResponse($user, 'El usuario ya tiene ese rol.');
+        }
+
+        $user->assignRole($role);
+        $newRoles = $user->getRoleNames()->all();
+
+        AuditLogger::roleLog(RoleLogAction::Assign, $request->user(), $role, [
+            'target_user' => ['id' => $user->id, 'name' => $user->name],
+            'roles'       => ['old' => $oldRoles, 'new' => $newRoles],
+        ]);
+
+        return $this->rolesResponse($user, 'Rol asignado correctamente.');
+    }
+
+    /**
+     * Remove a role from a user.
+     *
+     * Removes one role. A user must keep at least one role, and the last active
+     * administrator cannot lose the Administrador role. Requires the
+     * `users.update` permission.
+     */
+    #[ResponseAttribute(
+        status: RoleResponseConst::ROLE_REVOKED['status'],
+        description: RoleResponseConst::ROLE_REVOKED['description'],
+        examples: [RoleResponseConst::ROLE_REVOKED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::UNAUTHENTICATED['status'],
+        description: GlobalResponseConst::UNAUTHENTICATED['description'],
+        examples: [GlobalResponseConst::UNAUTHENTICATED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::FORBIDDEN['status'],
+        description: GlobalResponseConst::FORBIDDEN['description'],
+        examples: [GlobalResponseConst::FORBIDDEN['examples']],
+    )]
+    #[ResponseAttribute(
+        status: RoleResponseConst::LAST_ROLE['status'],
+        description: RoleResponseConst::LAST_ROLE['description'],
+        examples: [RoleResponseConst::LAST_ROLE['examples']],
+    )]
+    public function removeRoleFromUser(Request $request, User $user, Role $role): JsonResponse
+    {
+        // Self-protection: you cannot change your own roles.
+        if ($request->user()->id === $user->id) {
+            return $this->selfActionError('No puedes cambiar tus propios roles.');
+        }
+
+        // Idempotent: nothing to do if the user doesn't have the role.
+        if (! $user->hasRole($role->name)) {
+            return $this->rolesResponse($user, 'El usuario no tiene ese rol.');
+        }
+
+        // A user must keep at least one role.
+        if ($user->roles()->count() === 1) {
+            return response()->json([
+                'success'    => false,
+                'message'    => 'El usuario debe conservar al menos un rol.',
+                'error_code' => 'LAST_ROLE',
+            ], 409);
+        }
+
+        // Anti-lockout: cannot remove Administrador from the last active admin.
+        if ($role->name === AdminGuard::ADMIN_ROLE && AdminGuard::isLastActiveAdmin($user)) {
+            return response()->json([
+                'success'    => false,
+                'message'    => 'No puedes quitar el rol al último administrador activo.',
+                'error_code' => 'LAST_ADMIN',
+            ], 409);
+        }
+
+        $oldRoles = $user->getRoleNames()->all();
+        $user->removeRole($role->name);
+        $newRoles = $user->getRoleNames()->all();
+
+        AuditLogger::roleLog(RoleLogAction::Revoke, $request->user(), $role, [
+            'target_user' => ['id' => $user->id, 'name' => $user->name],
+            'roles'       => ['old' => $oldRoles, 'new' => $newRoles],
+        ]);
+
+        return $this->rolesResponse($user, 'Rol revocado correctamente.');
+    }
+
+    /**
+     * Replace a user's roles (atomic).
+     *
+     * Sets the complete final set of roles in one operation (syncRoles), so a
+     * "swap" never passes through an invalid 0-roles state. Guards are evaluated
+     * against the FINAL set. Requires the `users.update` permission.
+     */
+    #[ResponseAttribute(
+        status: RoleResponseConst::ROLES_SYNCED['status'],
+        description: RoleResponseConst::ROLES_SYNCED['description'],
+        examples: [RoleResponseConst::ROLES_SYNCED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::UNAUTHENTICATED['status'],
+        description: GlobalResponseConst::UNAUTHENTICATED['description'],
+        examples: [GlobalResponseConst::UNAUTHENTICATED['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::FORBIDDEN['status'],
+        description: GlobalResponseConst::FORBIDDEN['description'],
+        examples: [GlobalResponseConst::FORBIDDEN['examples']],
+    )]
+    #[ResponseAttribute(
+        status: RoleResponseConst::LAST_ROLE['status'],
+        description: RoleResponseConst::LAST_ROLE['description'],
+        examples: [RoleResponseConst::LAST_ROLE['examples']],
+    )]
+    #[ResponseAttribute(
+        status: GlobalResponseConst::VALIDATION_ERROR['status'],
+        description: GlobalResponseConst::VALIDATION_ERROR['description'],
+        examples: [GlobalResponseConst::VALIDATION_ERROR['examples']],
+    )]
+    public function syncUserRoles(SyncRolesRequest $request, User $user): JsonResponse
+    {
+        // Self-protection: you cannot change your own roles.
+        if ($request->user()->id === $user->id) {
+            return $this->selfActionError('No puedes cambiar tus propios roles.');
+        }
+
+        $finalRoles = array_values(array_unique($request->validated()['roles']));
+        $oldRoles   = $user->getRoleNames()->all();
+
+        // Anti-lockout: if the final set drops Administrador and this user was the
+        // last active admin, the system would be left without admins.
         if (in_array(AdminGuard::ADMIN_ROLE, $oldRoles, true)
-            && $newRole !== AdminGuard::ADMIN_ROLE
+            && ! in_array(AdminGuard::ADMIN_ROLE, $finalRoles, true)
             && AdminGuard::isLastActiveAdmin($user)) {
             return response()->json([
                 'success'    => false,
@@ -328,25 +465,40 @@ class RoleController extends Controller
             ], 409);
         }
 
-        $user->syncRoles([$newRole]);
+        // Atomic replacement — no intermediate 0-roles state.
+        $user->syncRoles($finalRoles);
         $newRoles = $user->getRoleNames()->all();
 
-        // Audit: record the role change only if it actually changed.
+        // Audit only if the set actually changed.
         if ($newRoles !== $oldRoles) {
-            AuditLogger::roleLog(RoleLogAction::Assign, $request->user(), $newRole, [
+            AuditLogger::roleLog(RoleLogAction::Assign, $request->user(), null, [
                 'target_user' => ['id' => $user->id, 'name' => $user->name],
                 'roles'       => ['old' => $oldRoles, 'new' => $newRoles],
             ]);
         }
 
+        return $this->rolesResponse($user, 'Roles actualizados correctamente.');
+    }
+
+    private function rolesResponse(User $user, string $message): JsonResponse
+    {
         return response()->json([
             'success' => true,
-            'message' => 'Rol asignado correctamente.',
+            'message' => $message,
             'data'    => [
                 'user_id' => $user->id,
                 'roles'   => $user->getRoleNames(),
             ],
         ]);
+    }
+
+    private function selfActionError(string $message): JsonResponse
+    {
+        return response()->json([
+            'success'    => false,
+            'message'    => $message,
+            'error_code' => 'SELF_ACTION_FORBIDDEN',
+        ], 403);
     }
 
     private function isProtected(Role $role): bool

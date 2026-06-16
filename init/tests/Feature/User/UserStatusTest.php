@@ -76,13 +76,49 @@ class UserStatusTest extends TestCase
             ->assertJson(['error_code' => 'SELF_ACTION_FORBIDDEN']);
     }
 
-    public function test_admin_cannot_change_their_own_role(): void
+    public function test_admin_cannot_change_their_own_roles(): void
     {
         $admin = $this->userWithRole('Administrador');
 
-        $this->putJson("/api/users/{$admin->id}/role", ['role' => 'Medico'], $this->authHeaders($admin))
+        $this->postJson("/api/users/{$admin->id}/roles", ['role' => 'Medico'], $this->authHeaders($admin))
             ->assertStatus(403)
             ->assertJson(['error_code' => 'SELF_ACTION_FORBIDDEN']);
+    }
+
+    public function test_admin_cannot_edit_their_own_user(): void
+    {
+        $admin = $this->userWithRole('Administrador');
+
+        $this->putJson("/api/users/{$admin->id}", [
+            'name'     => 'Changed',
+            'lastname' => $admin->lastname,
+            'email'    => $admin->email,
+            'role'     => 'Administrador',
+        ], $this->authHeaders($admin))
+            ->assertStatus(403)
+            ->assertJson(['error_code' => 'SELF_ACTION_FORBIDDEN']);
+
+        $this->assertSame($admin->name, $admin->fresh()->name); // unchanged
+    }
+
+    public function test_update_does_not_change_the_role(): void
+    {
+        $target = User::factory()->create();
+        $target->assignRole('Medico');
+
+        // Even if a 'role' field is sent, update must ignore it (role is managed
+        // only via PUT /users/{id}/role).
+        $this->putJson("/api/users/{$target->id}", [
+            'name'     => 'NewName',
+            'lastname' => $target->lastname,
+            'email'    => $target->email,
+            'role'     => 'Administrador',
+        ], $this->headersForRole('Administrador'))->assertOk();
+
+        $fresh = $target->fresh();
+        $this->assertSame('NewName', $fresh->name);          // data updated
+        $this->assertTrue($fresh->hasRole('Medico'));         // role unchanged
+        $this->assertFalse($fresh->hasRole('Administrador')); // role NOT escalated
     }
 
     /*

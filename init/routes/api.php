@@ -98,9 +98,15 @@ Route::middleware('auth:sanctum')->group(function () use ($registerCrud) {
     Route::patch('users/{user}/status', [UserController::class, 'changeStatus'])
         ->middleware('permission:users.update')->whereNumber('user')->name('users.status');
 
-    // Assign/change a user's role.
-    Route::put('users/{user}/role', [RoleController::class, 'assignToUser'])
+    // Manage a user's roles (a user can hold several roles).
+    // PUT replaces the whole set atomically (for "edit all roles" UIs); POST/DELETE
+    // add or remove one role at a time.
+    Route::put('users/{user}/roles', [RoleController::class, 'syncUserRoles'])
         ->middleware('permission:users.update')->whereNumber('user');
+    Route::post('users/{user}/roles', [RoleController::class, 'addRoleToUser'])
+        ->middleware('permission:users.update')->whereNumber('user');
+    Route::delete('users/{user}/roles/{role}', [RoleController::class, 'removeRoleFromUser'])
+        ->middleware('permission:users.update')->whereNumber(['user', 'role']);
 
     /*
     |----------------------------------------------------------------------

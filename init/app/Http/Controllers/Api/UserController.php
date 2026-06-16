@@ -109,34 +109,24 @@ class UserController extends Controller
     /**
      * Update user.
      *
-     * Updates the user's data and, if `role` is sent, replaces their role.
-     * Requires the Administrador role.
+     * Updates the user's name, lastname and email. The role is NOT changed here;
+     * it is managed exclusively via PUT /users/{user}/role. Requires the
+     * `users.update` permission.
      */
     public function update(UserRequest $request, User $user): JsonResponse
     {
+        // Self-protection: user management is for OTHER users. You cannot edit
+        // your own account through this endpoint.
+        if ($request->user()->id === $user->id) {
+            return $this->selfActionError('No puedes editar tu propio usuario.');
+        }
+
         $data = $request->validated();
-        $role = $data['role'] ?? null;
-        unset($data['role']);
 
         // Snapshot before the change to build the audit diff.
-        $oldRole = $user->getRoleNames()->first();
-        $before  = ['name' => $user->name, 'lastname' => $user->lastname, 'email' => $user->email];
-
-        // A role change has self-protection and anti-lockout guards.
-        if ($role !== null && $role !== $oldRole) {
-            if ($request->user()->id === $user->id) {
-                return $this->selfActionError('No puedes cambiar tu propio rol.');
-            }
-            if ($oldRole === AdminGuard::ADMIN_ROLE && AdminGuard::isLastActiveAdmin($user)) {
-                return $this->lastAdminError('No puedes quitar el rol al último administrador activo.');
-            }
-        }
+        $before = ['name' => $user->name, 'lastname' => $user->lastname, 'email' => $user->email];
 
         $user->update($data);
-
-        if ($role !== null) {
-            $user->syncRoles([$role]);
-        }
 
         // Audit: only the fields that actually changed; nothing logged if no change.
         $fields = AuditLogger::diff($before, [
@@ -144,9 +134,6 @@ class UserController extends Controller
             'lastname' => $user->lastname,
             'email'    => $user->email,
         ]);
-        if ($role !== null && $role !== $oldRole) {
-            $fields['role'] = ['old' => $oldRole, 'new' => $role];
-        }
         if (! empty($fields)) {
             AuditLogger::userLog(UserLogAction::Update, $request->user(), $user, $fields);
         }

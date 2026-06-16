@@ -11,4 +11,5 @@ enum RoleLogAction: string
     case Update = 'UPDATE';
     case Delete = 'DELETE';
     case Assign = 'ASSIGN';
+    case Revoke = 'REVOKE';
 }
