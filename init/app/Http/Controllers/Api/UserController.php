@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
-use Illuminate\Http\Request;
 use App\Http\Requests\UserRequest;
 use App\Http\Requests\User\ChangeUserStatusRequest;
+use App\Http\Requests\User\IndexUserRequest;
 use Illuminate\Http\JsonResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
@@ -20,11 +20,32 @@ class UserController extends Controller
     /**
      * List users.
      *
-     * Returns the paginated list of users with their roles. Requires the Administrador role.
+     * Returns the paginated list of users with their roles. Supports optional
+     * filters: `name` (matches name/lastname/email), `role`, `status`, and
+     * `per_page` (1-100, default 15). Requires the `users.read` permission.
      */
-    public function index(Request $request)
+    public function index(IndexUserRequest $request)
     {
-        $users = User::paginate();
+        $filters = $request->validated();
+        $perPage = (int) ($filters['per_page'] ?? 15);
+
+        $users = User::query()
+            ->when(! empty($filters['name']), function ($q) use ($filters) {
+                $term = $filters['name'];
+                $q->where(function ($w) use ($term) {
+                    $w->where('name', 'like', "%{$term}%")
+                        ->orWhere('lastname', 'like', "%{$term}%")
+                        ->orWhere('email', 'like', "%{$term}%");
+                });
+            })
+            ->when(! empty($filters['role']), fn ($q) => $q->whereHas(
+                'roles',
+                fn ($r) => $r->where('name', $filters['role'])
+            ))
+            ->when(! empty($filters['status']), fn ($q) => $q->where('status', $filters['status']))
+            ->orderBy('id')
+            ->paginate($perPage)
+            ->withQueryString();
 
         return UserResource::collection($users);
     }
