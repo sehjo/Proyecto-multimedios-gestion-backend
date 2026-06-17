@@ -29,12 +29,14 @@ class RolePermissionSeeder extends Seeder
         // Administrador: every permission.
         $this->makeRole('Administrador', PermissionCatalog::allPermissionNames());
 
-        // Medico: everything except user/role management and audit logs.
+        // Medico: everything except user/role management, audit logs and
+        // institution availability config (those are Administrador-only).
         $medical = array_values(array_filter(
             PermissionCatalog::allPermissionNames(),
             fn (string $name) => ! str_starts_with($name, 'users.')
                 && ! str_starts_with($name, 'roles.')
-                && ! str_starts_with($name, 'logs_'),
+                && ! str_starts_with($name, 'logs_')
+                && ! str_starts_with($name, 'availability.'),
         ));
         $this->makeRole('Medico', $medical);
 

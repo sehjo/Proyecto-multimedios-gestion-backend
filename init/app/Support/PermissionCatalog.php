@@ -47,6 +47,7 @@ class PermissionCatalog
         'drugs',
         'priorities',
         'treatments',
+        'availability',
     ];
 
     /**

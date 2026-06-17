@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\LogUserController;
 use App\Http\Controllers\Api\LogRoleController;
+use App\Http\Controllers\Api\InstitutionScheduleController;
 use App\Http\Controllers\Api\PriorityController;
 use App\Http\Controllers\Api\DrugController;
 use App\Http\Controllers\Api\DiseaseController;
@@ -137,6 +138,16 @@ Route::middleware('auth:sanctum')->group(function () use ($registerCrud) {
         ->middleware('permission:logs_users.read')->name('logs.users');
     Route::get('logs/roles', [LogRoleController::class, 'index'])
         ->middleware('permission:logs_roles.read')->name('logs.roles');
+
+    /*
+    |----------------------------------------------------------------------
+    | Availability — institution weekly schedule (HU-038)
+    |----------------------------------------------------------------------
+    */
+    Route::get('institution/schedules', [InstitutionScheduleController::class, 'index'])
+        ->middleware('permission:availability.read')->name('institution.schedules.index');
+    Route::put('institution/schedules', [InstitutionScheduleController::class, 'sync'])
+        ->middleware('permission:availability.update')->name('institution.schedules.sync');
 
     /*
     |----------------------------------------------------------------------
