@@ -161,7 +161,7 @@ users_types <- users -> patient -> diagnoses -> diagnoses_has_treatments
 ## Notes
 
 - All tables use an auto-increment `id` primary key (`BIGINT UNSIGNED`).
-- Laravel `string()` columns default to `VARCHAR(255)` when no length is specified.
+- See `database/schema.sql` for the authoritative DDL.
 - The `drugs.type` field is an `ENUM` with values: `tablet`, `capsule`, `syrup`, `injection`, `topical`, `other`.
 - `Max chars` for `ENUM` is shown as the longest allowed literal (`injection` = 9).
 - `users`, `patient`, and `diagnoses` include traceability fields (`register_by`, `diagnoses_by`).

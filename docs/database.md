@@ -4,7 +4,7 @@ El proyecto consta de entidades muy marcadas para simular el control y registro 
 
 ## Eliminación de Registros (Hard Deletes)
 
-En esta API **no** se están utilizando "Soft Deletes". Todas las eliminaciones disparadas a través de los endpoints o controladores (`->delete()`) resultarán en un borrado físico permanente de la fila en MySQL para liberar espacio. 
+En esta API **no** se están utilizando "Soft Deletes". Todas las eliminaciones disparadas a través de los endpoints o controladores (`DELETE FROM ...` en los repositorios) resultarán en un borrado físico permanente de la fila en MySQL para liberar espacio. 
 
 Se debe tener cuidado al borrar ya que pueden existir posibles validaciones de restricciones limitando el borrado de padres que tengan hijos referenciados.
 
@@ -29,15 +29,15 @@ Se debe tener cuidado al borrar ya que pueden existir posibles validaciones de r
 
 ---
 
-## Seeders (Datos Iniciales en Español)
+## Datos Iniciales (Seed)
 
-Al correr `php artisan migrate:fresh --seed`, se insertará información de muestra completamente en **Español** para que puedas utilizar la plataforma de inmediato sin tener que registrar data manual.
+Al cargar `database/schema.sql` seguido de `database/seed.sql` (ver [installation.md](installation.md)), se insertará información de muestra completamente en **Español** para que puedas utilizar la plataforma de inmediato sin tener que registrar data manual.
 
-Los seeders se ejecutan en orden estricto de acuerdo a las dependencias (`DatabaseSeeder.php`).
+Los inserts respetan el orden estricto de dependencias por llave foránea (`users_types` → `users` → `patient` → `priority` → `disease` → `drugs` → `diagnoses` → tablas de tratamientos).
 
 ### Credenciales de Acceso Sembradas
 
-El `UserSeeder` genera las siguientes cuentas (la contraseña es global para facilitar el testing):
+`database/seed.sql` inserta las siguientes cuentas (contraseñas en texto plano antes del hash bcrypt):
 
 | Rol | Email | Contraseña |
 | --- | --- | --- |

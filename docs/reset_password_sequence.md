@@ -7,7 +7,7 @@ Este documento explica el flujo completo desde que el usuario solicita el restab
 - `POST /api/auth/forgot-password`
 - `POST /api/auth/reset-password`
 
-Definidos en [init/routes/api.php](../init/routes/api.php).
+Definidos en [public/index.php](../public/index.php), implementados en [controllers/AuthController.php](../controllers/AuthController.php).
 
 ---
 
@@ -27,16 +27,16 @@ Definidos en [init/routes/api.php](../init/routes/api.php).
 2. Se busca el usuario por correo.
 3. Si no existe, **igual** se responde éxito genérico (para evitar enumeración de usuarios).
 4. Si existe:
-   - Se eliminan tokens anteriores de ese correo en `password_reset_tokens`.
-   - Se genera un token en texto plano (`Str::random(64)`).
+   - Se eliminan tokens anteriores de ese correo en `password_reset_tokens` (`PasswordResetRepository::deleteByEmail`).
+   - Se genera un token en texto plano (`bin2hex(random_bytes(32))`, 64 caracteres hex).
    - Se crea el hash `sha256(token_plano)`.
    - Se guarda en `password_reset_tokens`:
      - `email`
      - `token` (hash, no el token plano)
-     - `created_at`
+     - `created_at` (generado en PHP, no con `NOW()` de MySQL, para que la comparación de expiración use siempre el mismo reloj sin importar la zona horaria del servidor de base de datos)
    - Se arma URL de frontend:
      - `${FRONTEND_URL}/reset-password?token=<token_plano>`
-   - Se envía correo con la clase `PasswordResetMail` y la vista `emails.password-reset`.
+   - Se envía el correo con `core/Mailer.php` (`Mailer::sendPasswordReset`): en modo `log` escribe el HTML en `storage/logs/mail.log`, en otro caso usa la función nativa `mail()`.
 
 ### Respuesta API
 Siempre retorna mensaje genérico:
@@ -76,11 +76,11 @@ Siempre retorna mensaje genérico:
 3. Se busca el registro en `password_reset_tokens` por ese hash.
 4. Si no existe, retorna `422` (token inválido).
 5. Se valida expiración por `created_at`.
-   - Actualmente el backend expira en **15 minutos**.
+   - Actualmente el backend expira en **60 minutos** (`config('auth.password_reset_expire_minutes')`).
 6. Se busca usuario por `email` del registro de token.
 7. Si existe:
-   - Se actualiza `users.password` con `Hash::make(password)`.
-   - Se revocan todos sus tokens API (`$user->tokens()->delete()`).
+   - Se actualiza `users.password` con `password_hash($password, PASSWORD_BCRYPT)` (`UserRepository::updatePassword`).
+   - Se revocan todos sus tokens API (`Auth::revokeAllTokens($userId)` → borra sus filas en `personal_access_tokens`).
    - Se elimina el token usado de `password_reset_tokens`.
 8. Se retorna éxito.
 
@@ -102,21 +102,21 @@ Siempre retorna mensaje genérico:
 ### Tabla `users`
 - **Update** de `password` al confirmar nueva contraseña.
 
-### Tabla de tokens de Sanctum
+### Tabla `personal_access_tokens`
 - **Delete** de tokens activos del usuario al cambiar contraseña (cerrar sesiones API).
 
 ---
 
+## Configuración de correo (`.env`)
 
+Ejemplo para usar SMTP real en vez del driver `log` (ver [config/config.php](../config/config.php)):
 
-
-
-## datos .env
+```env
 MAIL_MAILER=smtp
-MAIL_SCHEME=smtp
 MAIL_HOST=smtp.gmail.com
 MAIL_PORT=587
-MAIL_USERNAME=practicarecuperacion.ccss@gmail.com
-MAIL_PASSWORD=pikdetumozzkbumr
-MAIL_FROM_ADDRESS=practicarecuperacion.ccss@gmail.com
-MAIL_FROM_NAME="${APP_NAME}"
+MAIL_USERNAME=tu_correo@gmail.com
+MAIL_PASSWORD=tu_app_password
+MAIL_FROM_ADDRESS=tu_correo@gmail.com
+MAIL_FROM_NAME=API
+```

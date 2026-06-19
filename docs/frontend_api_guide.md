@@ -28,7 +28,7 @@ This document describes how to consume the **CCSS Consultory** REST API from a R
 
 ## Overview
 
-The backend is built with **Laravel** and exposes a fully RESTful JSON API. Every resource follows the same CRUD pattern:
+The backend is **plain PHP** (no framework) and exposes a fully RESTful JSON API. Every resource follows the same CRUD pattern:
 
 | Action  | Method   | Path              |
 |---------|----------|-------------------|
@@ -52,7 +52,7 @@ http://localhost:8000/api
 
 ## Authentication
 
-The `/api/user` route is protected by **Laravel Sanctum** and requires a Bearer token. The remaining resource endpoints are currently open.
+The `/api/user`, `/api/logout` and `/api/dashboard` routes require a Bearer token issued by `POST /api/login` (validated against the `personal_access_tokens` table — see `core/Auth.php`). The remaining resource endpoints are currently open.
 
 To include a token in requests:
 
@@ -67,19 +67,13 @@ axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
 ## Pagination
 
-All `index` (list) endpoints return paginated results using Laravel's default pagination.
+All `index` (list) endpoints return paginated results (`core/Paginator.php`), using `?page=` and `?per_page=` query params.
 
 **Response shape:**
 
 ```json
 {
   "data": [ ...array of resource objects... ],
-  "links": {
-    "first": "http://localhost:8000/api/users?page=1",
-    "last":  "http://localhost:8000/api/users?page=5",
-    "prev":  null,
-    "next":  "http://localhost:8000/api/users?page=2"
-  },
   "meta": {
     "current_page": 1,
     "from": 1,
@@ -90,6 +84,8 @@ All `index` (list) endpoints return paginated results using Laravel's default pa
   }
 }
 ```
+
+> Note: there is no `links` object (no `first`/`last`/`prev`/`next` URLs) — build pagination links on the frontend from `meta` if needed.
 
 **Navigating pages:**
 
@@ -115,12 +111,16 @@ const { data, meta } = response.data;
 
 ```json
 {
-  "message": "The name field is required.",
+  "success": false,
+  "message": "Error de validación: Algunos campos exceden el límite permitido o son inválidos.",
+  "error_code": "VALIDATION_ERROR",
   "errors": {
-    "name": ["The name field is required."]
+    "name": ["El campo name es obligatorio."]
   }
 }
 ```
+
+> `404` and `401` responses use the simpler `{ "message": "..." }` shape (no `success`/`error_code`).
 
 ---
 

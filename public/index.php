@@ -1,20 +1,23 @@
 <?php
 
-use Illuminate\Foundation\Application;
-use Illuminate\Http\Request;
+require_once __DIR__ . '/../core/bootstrap.php';
 
-define('LARAVEL_START', microtime(true));
+$request = new Request();
+$router = new Router();
 
-// Determine if the application is in maintenance mode...
-if (file_exists($maintenance = __DIR__.'/../storage/framework/maintenance.php')) {
-    require $maintenance;
-}
+// Health check fuera del prefijo /api, equivalente al `health: '/up'` del bootstrap/app.php original.
+$router->get('/up', [HealthController::class, 'index']);
 
-// Register the Composer autoloader...
-require __DIR__.'/../vendor/autoload.php';
+$router->get('/api/user', [AuthController::class, 'me']);
+$router->post('/api/login', [AuthController::class, 'login']);
+$router->post('/api/logout', [AuthController::class, 'logout']);
+$router->post('/api/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+$router->post('/api/auth/reset-password', [AuthController::class, 'resetPassword']);
 
-// Bootstrap Laravel and handle the request...
-/** @var Application $app */
-$app = require_once __DIR__.'/../bootstrap/app.php';
+$router->get('/api/dashboard', [DashboardController::class, 'index']);
 
-$app->handleRequest(Request::capture());
+$router->resource('api/users', UserController::class);
+$router->resource('api/user-types', UsersTypeController::class);
+$router->resource('api/patients', PatientController::class);
+
+$router->dispatch($request);

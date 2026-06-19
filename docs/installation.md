@@ -2,57 +2,50 @@
 
 ## Requisitos Previos
 
-- **PHP**: >= 8.2 (Extensiones recomendadas: PDO, OpenSSL, Mbstring, Tokenizer, XML)
-- **Composer**: >= 2.x
+- **PHP**: >= 8.2 (extensiones requeridas: `pdo`, `pdo_mysql`)
 - **MySQL**: >= 8.0
+- Sin Composer ni ningún framework: el backend es PHP puro, las clases se cargan con `require_once` (ver `core/bootstrap.php`).
 
 ## Pasos para Levantar el Proyecto Localmente
 
-1. **Clonar y Acceder al Proyecto**
-   El código principal de Laravel se encuentra dentro de la carpeta `init/`.
+1. **Clonar el proyecto**
    ```bash
    git clone <URL_DEL_REPO>
-   cd ccss_consultory_bk/init
+   cd Proyecto-multimedios-gestion-backend
    ```
 
-2. **Instalar Dependencias**
-   ```bash
-   composer install
-   ```
-
-3. **Configurar el Entorno**
-   Copia el archivo de entorno base:
+2. **Configurar el Entorno**
+   Copia el archivo de entorno base y ajusta tus credenciales de MySQL:
    ```bash
    cp .env.example .env
    ```
-   Genera la clave de la aplicación:
-   ```bash
-   php artisan key:generate
-   ```
-
-4. **Configurar la Base de Datos (`.env`)**
-   Asegúrate de que tus credenciales de MySQL estén correctamente configuradas.
-   *Nota: Si estás usando MySQL y experimentas tiempos de espera porque no existe la tabla de sesiones, cambia el controlador de sesiones a archivo en tu `.env`.*
    ```env
-   DB_CONNECTION=mysql
    DB_HOST=127.0.0.1
    DB_PORT=3306
    DB_DATABASE=db_ccss
    DB_USERNAME=root
-   DB_PASSWORD=1234 # O tu contraseña
-
-   SESSION_DRIVER=file # Muy importante si fallan las peticiones sin session table
+   DB_PASSWORD=tu_password
    ```
 
-5. **Ejecutar Migraciones y Seeders**
-   Esto creará todas las tablas e inyectará datos de prueba en español.
-   *(Asegúrate de haber creado la base de datos `db_ccss` en tu gestor MySQL antes).*
+3. **Crear la base de datos y cargar el esquema**
    ```bash
-   php artisan migrate:fresh --seed
+   mysql --default-character-set=utf8mb4 -uroot -p -e "CREATE DATABASE db_ccss CHARACTER SET utf8mb4;"
+   mysql --default-character-set=utf8mb4 -uroot -p db_ccss < database/schema.sql
+   ```
+   *Importante: usa `--default-character-set=utf8mb4` al cargar los `.sql`; de lo contrario los acentos (á, é, í, ó, ú, ñ) se guardan corruptos.*
+
+4. **(Opcional) Cargar datos de ejemplo en español**
+   ```bash
+   mysql --default-character-set=utf8mb4 -uroot -p db_ccss < database/seed.sql
    ```
 
-6. **Levantar el Servidor**
+5. **Levantar el servidor**
    ```bash
-   php artisan serve
+   php -S 127.0.0.1:8000 -t public
    ```
-   El backend estará escuchando en `http://127.0.0.1:8000`.
+   El backend estará escuchando en `http://127.0.0.1:8000`, con todos los endpoints bajo el prefijo `/api` (ver [api.md](api.md)).
+
+6. **(Opcional) Ejecutar las pruebas**
+   ```bash
+   php tests/run.php
+   ```

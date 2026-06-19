@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - main
       - '*.x'
   pull_request:
   schedule:
@@ -15,6 +16,20 @@ permissions:
 jobs:
   tests:
     runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: db_ccss
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     strategy:
       fail-fast: true
@@ -31,17 +46,21 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
+          extensions: mbstring, pdo, pdo_mysql
           coverage: none
 
-      - name: Install Composer dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
-
       - name: Copy environment file
-        run: cp .env.example .env
+        run: |
+          cp .env.example .env
+          sed -i 's/^DB_PASSWORD=.*/DB_PASSWORD=root/' .env
 
-      - name: Generate app key
-        run: php artisan key:generate
+      - name: Lint PHP files
+        run: find core models repositories resources controllers config public tests -name "*.php" -print0 | xargs -0 -n1 php -l
 
-      - name: Execute tests
-        run: php artisan test
+      - name: Load database schema and seed data
+        run: |
+          mysql --default-character-set=utf8mb4 -h127.0.0.1 -uroot -proot db_ccss < database/schema.sql
+          mysql --default-character-set=utf8mb4 -h127.0.0.1 -uroot -proot db_ccss < database/seed.sql
+
+      - name: Run test suite
+        run: php tests/run.php
