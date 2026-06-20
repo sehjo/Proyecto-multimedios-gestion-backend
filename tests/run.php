@@ -4,6 +4,7 @@ require_once __DIR__ . '/../core/Env.php';
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../core/Validator.php';
 require_once __DIR__ . '/../core/Paginator.php';
+require_once __DIR__ . '/../repositories/PermissionRepository.php';
 
 $failures = 0;
 
@@ -62,6 +63,55 @@ check(
 $meta = Paginator::meta(45, 2, 20);
 check('Paginator calcula last_page correctamente', $meta['last_page'] === 3);
 check('Paginator calcula from/to correctamente', $meta['from'] === 21 && $meta['to'] === 40);
+
+// -------------------------------------------------------------------------
+// Roles & permissions: read/write cascade (ported from the Spatie catalog).
+// -------------------------------------------------------------------------
+
+// A write permission must imply the module's read.
+$expanded = PermissionRepository::expandCascade(['users.update']);
+check(
+    'expandCascade: users.update implica users.read',
+    in_array('users.update', $expanded, true) && in_array('users.read', $expanded, true)
+);
+
+// delete and create also cascade to read.
+$expanded = PermissionRepository::expandCascade(['users.delete', 'roles.create']);
+check(
+    'expandCascade: delete y create implican el read de su módulo',
+    in_array('users.read', $expanded, true) && in_array('roles.read', $expanded, true)
+);
+
+// A plain read does not add anything extra.
+$expanded = PermissionRepository::expandCascade(['patients.read']);
+check(
+    'expandCascade: un read solo no agrega otros permisos',
+    $expanded === ['patients.read']
+);
+
+// The result is deduplicated.
+$expanded = PermissionRepository::expandCascade(['users.update', 'users.read', 'users.update']);
+check(
+    'expandCascade: el resultado no tiene duplicados',
+    count($expanded) === count(array_unique($expanded))
+);
+
+// -------------------------------------------------------------------------
+// User status change: direction-based permission rule (pure logic).
+// Reactivate (→ ACTIVE) needs users.update; deactivate (→ INACTIVE) needs
+// users.delete. This mirrors UserController::changeStatus.
+// -------------------------------------------------------------------------
+$requiredPermission = fn (string $newStatus): string =>
+    $newStatus === 'INACTIVE' ? 'users.delete' : 'users.update';
+
+check(
+    'changeStatus: desactivar requiere users.delete',
+    $requiredPermission('INACTIVE') === 'users.delete'
+);
+check(
+    'changeStatus: reactivar requiere users.update',
+    $requiredPermission('ACTIVE') === 'users.update'
+);
 
 echo "\n";
 
