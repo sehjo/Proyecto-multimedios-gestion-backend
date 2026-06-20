@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     user_type_id BIGINT UNSIGNED NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMP NULL,
     updated_at TIMESTAMP NULL,
     CONSTRAINT fk_users_user_type FOREIGN KEY (user_type_id) REFERENCES users_types (id)
@@ -114,4 +115,53 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     token VARCHAR(64) NOT NULL,
     created_at TIMESTAMP NULL,
     INDEX idx_password_reset_tokens_token (token)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Roles & permissions (ported from the Laravel Spatie module).
+-- Roles ARE the existing users_types rows; permissions hang off them via the
+-- usertype_has_permissions pivot. A user's role is users.user_type_id, so a
+-- user holds exactly one role (matching how dev already works).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS permissions (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS usertype_has_permissions (
+    user_type_id BIGINT UNSIGNED NOT NULL,
+    permission_id BIGINT UNSIGNED NOT NULL,
+    PRIMARY KEY (user_type_id, permission_id),
+    CONSTRAINT fk_uthp_user_type FOREIGN KEY (user_type_id) REFERENCES users_types (id) ON DELETE CASCADE,
+    CONSTRAINT fk_uthp_permission FOREIGN KEY (permission_id) REFERENCES permissions (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Audit logs (read-only): one row per relevant action on users / roles.
+-- `changes` stores a JSON blob with {field: {old, new}} like the Laravel logger.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS log_users (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    action VARCHAR(50) NOT NULL,
+    actor_id BIGINT UNSIGNED NULL,
+    target_id BIGINT UNSIGNED NULL,
+    changes TEXT NULL,
+    created_at TIMESTAMP NULL,
+    INDEX idx_log_users_target (target_id),
+    INDEX idx_log_users_actor (actor_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS log_roles (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    action VARCHAR(50) NOT NULL,
+    actor_id BIGINT UNSIGNED NULL,
+    target_id BIGINT UNSIGNED NULL,
+    changes TEXT NULL,
+    created_at TIMESTAMP NULL,
+    INDEX idx_log_roles_target (target_id),
+    INDEX idx_log_roles_actor (actor_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

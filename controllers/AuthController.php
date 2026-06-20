@@ -15,17 +15,26 @@ class AuthController
             return;
         }
 
-        $result = Auth::attempt($request->input('email'), $request->input('password'));
+        $user = UserRepository::findByEmail($request->input('email'));
 
-        if (!$result) {
+        if (!$user || !password_verify($request->input('password'), $user->getPassword())) {
             Response::validationError(['email' => ['Las credenciales proporcionadas son incorrectas.']]);
 
             return;
         }
 
+        // Inactive accounts cannot log in (no token is issued).
+        if ($user->getStatus() === 'INACTIVE') {
+            Response::error('Tu cuenta está inactiva. Contacta a un administrador.', 'INACTIVE_ACCOUNT', 403);
+
+            return;
+        }
+
+        $token = Auth::issueToken($user);
+
         Response::json([
-            'token' => $result['token'],
-            'user' => UserResource::toArray($result['user']),
+            'token' => $token,
+            'user' => UserResource::toArray($user),
         ]);
     }
 
@@ -39,7 +48,35 @@ class AuthController
             return;
         }
 
-        Response::json(UserResource::toArray($user));
+        // Include the user's permissions so the front can drive UI gates.
+        $payload = UserResource::toArray($user);
+        $payload['permissions'] = Auth::permissions($user);
+
+        Response::json($payload);
+    }
+
+    /**
+     * Whether the authenticated user holds a given permission. Convenience for
+     * the front-end to show/hide actions; real authorization is per endpoint.
+     */
+    public function hasPermission(Request $request): void
+    {
+        if (!$user = Guard::user($request)) {
+            return;
+        }
+
+        $permission = $request->query('permission', $request->input('permission'));
+
+        if (!is_string($permission) || $permission === '') {
+            Response::validationError(['permission' => ['El campo permission es obligatorio.']]);
+
+            return;
+        }
+
+        Response::json([
+            'permission' => $permission,
+            'granted' => Auth::can($user, $permission),
+        ]);
     }
 
     public function logout(Request $request): void

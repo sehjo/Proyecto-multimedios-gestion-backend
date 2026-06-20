@@ -27,4 +27,29 @@ class Response
             'errors' => $errors,
         ], 422);
     }
+
+    /**
+     * Consistent error envelope: { success:false, message, error_code }.
+     * Mirrors the helpers of the Laravel UserController (selfActionError, etc.).
+     */
+    public static function error(string $message, string $errorCode, int $status): void
+    {
+        self::json([
+            'success' => false,
+            'message' => $message,
+            'error_code' => $errorCode,
+        ], $status);
+    }
+
+    /** 401 — no authenticated session. */
+    public static function unauthenticated(string $message = 'No autenticado.'): void
+    {
+        self::error($message, 'UNAUTHENTICATED', 401);
+    }
+
+    /** 403 — authenticated but lacks the required permission. */
+    public static function forbidden(string $message = 'No tienes permisos para realizar esta acción.'): void
+    {
+        self::error($message, 'FORBIDDEN', 403);
+    }
 }

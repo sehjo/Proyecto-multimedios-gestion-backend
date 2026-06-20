@@ -10,6 +10,9 @@ class UserResource
             'lastname' => $user->getLastname(),
             'email' => $user->getEmail(),
             'user_type_id' => $user->getUserTypeId(),
+            // Role (single, derived from user_type_id) and account status.
+            'role' => $user->getRoleName(),
+            'status' => $user->getStatus(),
             'created_at' => $user->getCreatedAt(),
             'updated_at' => $user->getUpdatedAt(),
         ];

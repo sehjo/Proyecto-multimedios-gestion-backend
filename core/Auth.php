@@ -61,4 +61,26 @@ class Auth
     {
         TokenRepository::deleteAllForUser($userId);
     }
+
+    /**
+     * Permission names granted to the user's role (users_type).
+     *
+     * @return array<int, string>
+     */
+    public static function permissions(User $user): array
+    {
+        $userTypeId = $user->getUserTypeId();
+
+        return $userTypeId === null ? [] : PermissionRepository::namesForUserType($userTypeId);
+    }
+
+    /**
+     * Whether the user holds a given permission through its role.
+     */
+    public static function can(User $user, string $permission): bool
+    {
+        $userTypeId = $user->getUserTypeId();
+
+        return $userTypeId !== null && PermissionRepository::userTypeHas($userTypeId, $permission);
+    }
 }

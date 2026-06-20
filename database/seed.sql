@@ -83,3 +83,45 @@ INSERT INTO diagnoses_has_treatments (diagnoses_id, drugs, descriptions, created
     (4, 2, 'Ibuprofen 400mg cada 8h para aliviar dolor muscular.', NOW(), NOW()),
     (5, 2, 'Ibuprofen dosis baja 100mg diario como terapia antiplaquetaria.', NOW(), NOW()),
     (5, 5, 'Omeprazole 20mg diario para proteger mucosa gastrica.', NOW(), NOW());
+
+-- ---------------------------------------------------------------------------
+-- Permissions catalog (ported from App\Support\PermissionCatalog).
+-- Modules x actions (read/create/update/delete) + read-only log permissions.
+-- ---------------------------------------------------------------------------
+INSERT INTO permissions (name, created_at, updated_at) VALUES
+    ('users.read', NOW(), NOW()),       ('users.create', NOW(), NOW()),       ('users.update', NOW(), NOW()),       ('users.delete', NOW(), NOW()),
+    ('roles.read', NOW(), NOW()),       ('roles.create', NOW(), NOW()),       ('roles.update', NOW(), NOW()),       ('roles.delete', NOW(), NOW()),
+    ('patients.read', NOW(), NOW()),    ('patients.create', NOW(), NOW()),    ('patients.update', NOW(), NOW()),    ('patients.delete', NOW(), NOW()),
+    ('diagnoses.read', NOW(), NOW()),   ('diagnoses.create', NOW(), NOW()),   ('diagnoses.update', NOW(), NOW()),   ('diagnoses.delete', NOW(), NOW()),
+    ('diseases.read', NOW(), NOW()),    ('diseases.create', NOW(), NOW()),    ('diseases.update', NOW(), NOW()),    ('diseases.delete', NOW(), NOW()),
+    ('drugs.read', NOW(), NOW()),       ('drugs.create', NOW(), NOW()),       ('drugs.update', NOW(), NOW()),       ('drugs.delete', NOW(), NOW()),
+    ('priorities.read', NOW(), NOW()),  ('priorities.create', NOW(), NOW()),  ('priorities.update', NOW(), NOW()),  ('priorities.delete', NOW(), NOW()),
+    ('treatments.read', NOW(), NOW()),  ('treatments.create', NOW(), NOW()),  ('treatments.update', NOW(), NOW()),  ('treatments.delete', NOW(), NOW()),
+    ('logs_users.read', NOW(), NOW()),  ('logs_roles.read', NOW(), NOW());
+
+-- ---------------------------------------------------------------------------
+-- Role -> permission assignments (users_types = roles). Built by pattern to
+-- mirror the Laravel RolePermissionSeeder; the read/write cascade is implicit
+-- because every module already has its .read inserted above.
+-- ---------------------------------------------------------------------------
+
+-- Administrador (id 1): ALL permissions.
+INSERT INTO usertype_has_permissions (user_type_id, permission_id)
+    SELECT 1, id FROM permissions;
+
+-- Medico (id 2): everything EXCEPT users.*, roles.* and logs_*.
+INSERT INTO usertype_has_permissions (user_type_id, permission_id)
+    SELECT 2, id FROM permissions
+    WHERE name NOT LIKE 'users.%'
+      AND name NOT LIKE 'roles.%'
+      AND name NOT LIKE 'logs\_%';
+
+-- Enfermero (id 3): patients.read; diagnoses.read+create; diseases.read.
+INSERT INTO usertype_has_permissions (user_type_id, permission_id)
+    SELECT 3, id FROM permissions
+    WHERE name IN ('patients.read', 'diagnoses.read', 'diagnoses.create', 'diseases.read');
+
+-- Paciente (id 4): read-only on patients, diagnoses, diseases.
+INSERT INTO usertype_has_permissions (user_type_id, permission_id)
+    SELECT 4, id FROM permissions
+    WHERE name IN ('patients.read', 'diagnoses.read', 'diseases.read');

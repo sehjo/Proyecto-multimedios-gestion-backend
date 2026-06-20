@@ -8,8 +8,12 @@ class User
     private ?string $email;
     private ?string $password;
     private ?int $userTypeId;
+    private ?string $status;
     private ?string $createdAt;
     private ?string $updatedAt;
+
+    /** Role name resolved via JOIN with users_types (not a users column). */
+    private ?string $roleName = null;
 
     public function __construct(
         ?int $id = null,
@@ -18,6 +22,7 @@ class User
         ?string $email = null,
         ?string $password = null,
         ?int $userTypeId = null,
+        ?string $status = null,
         ?string $createdAt = null,
         ?string $updatedAt = null
     ) {
@@ -27,22 +32,31 @@ class User
         $this->email = $email;
         $this->password = $password;
         $this->userTypeId = $userTypeId;
+        $this->status = $status;
         $this->createdAt = $createdAt;
         $this->updatedAt = $updatedAt;
     }
 
     public static function fromRow(array $row): self
     {
-        return new self(
+        $user = new self(
             isset($row['id']) ? (int) $row['id'] : null,
             $row['name'] ?? null,
             $row['lastname'] ?? null,
             $row['email'] ?? null,
             $row['password'] ?? null,
             isset($row['user_type_id']) ? (int) $row['user_type_id'] : null,
+            $row['status'] ?? 'ACTIVE',
             $row['created_at'] ?? null,
             $row['updated_at'] ?? null
         );
+
+        // Optional role name when the query JOINs users_types.
+        if (isset($row['role_name'])) {
+            $user->setRoleName($row['role_name']);
+        }
+
+        return $user;
     }
 
     public function getId(): ?int
@@ -103,6 +117,26 @@ class User
     public function setUserTypeId(?int $userTypeId): void
     {
         $this->userTypeId = $userTypeId;
+    }
+
+    public function getStatus(): ?string
+    {
+        return $this->status;
+    }
+
+    public function setStatus(?string $status): void
+    {
+        $this->status = $status;
+    }
+
+    public function getRoleName(): ?string
+    {
+        return $this->roleName;
+    }
+
+    public function setRoleName(?string $roleName): void
+    {
+        $this->roleName = $roleName;
     }
 
     public function getCreatedAt(): ?string
