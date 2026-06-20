@@ -123,6 +123,66 @@ class UserStatusTest extends TestCase
 
     /*
     |--------------------------------------------------------------------------
+    | Direction-based permission (deactivate vs. reactivate)
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * A role with users.update (but NOT users.delete) can reactivate but not deactivate.
+     */
+    public function test_reactivator_can_activate_but_not_deactivate(): void
+    {
+        // Create a custom role that has update but NOT delete.
+        $reactivatorRole = \Spatie\Permission\Models\Role::create(['name' => 'Reactivator', 'guard_name' => 'web']);
+        $reactivatorRole->givePermissionTo(['users.read', 'users.update']);
+
+        $reactivator = User::factory()->create();
+        $reactivator->assignRole('Reactivator');
+        $headers = $this->authHeaders($reactivator);
+
+        // Target: inactive user → should be reactivatable.
+        $target = User::factory()->inactive()->create();
+        $target->assignRole('Medico');
+
+        $this->patchJson("/api/users/{$target->id}/status", ['status' => 'ACTIVE'], $headers)
+            ->assertOk()
+            ->assertJsonPath('status', 'ACTIVE');
+
+        // Now try to deactivate — should be rejected with 403 FORBIDDEN.
+        $this->patchJson("/api/users/{$target->id}/status", ['status' => 'INACTIVE'], $headers)
+            ->assertStatus(403)
+            ->assertJson(['error_code' => 'FORBIDDEN']);
+    }
+
+    /**
+     * A role with users.delete (but NOT users.update) can deactivate but not reactivate.
+     */
+    public function test_deactivator_can_deactivate_but_not_reactivate(): void
+    {
+        // Create a custom role that has delete but NOT update.
+        $deactivatorRole = \Spatie\Permission\Models\Role::create(['name' => 'Deactivator', 'guard_name' => 'web']);
+        $deactivatorRole->givePermissionTo(['users.read', 'users.delete']);
+
+        $deactivator = User::factory()->create();
+        $deactivator->assignRole('Deactivator');
+        $headers = $this->authHeaders($deactivator);
+
+        // Target: active user → should be deactivatable.
+        $target = User::factory()->create();
+        $target->assignRole('Medico');
+
+        $this->patchJson("/api/users/{$target->id}/status", ['status' => 'INACTIVE'], $headers)
+            ->assertOk()
+            ->assertJsonPath('status', 'INACTIVE');
+
+        // Now try to reactivate — should be rejected with 403 FORBIDDEN.
+        $this->patchJson("/api/users/{$target->id}/status", ['status' => 'ACTIVE'], $headers)
+            ->assertStatus(403)
+            ->assertJson(['error_code' => 'FORBIDDEN']);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Anti-lockout (last active administrator)
     |--------------------------------------------------------------------------
     */
@@ -133,10 +193,12 @@ class UserStatusTest extends TestCase
         $lastAdmin = $this->userWithRole('Administrador');
         $this->assertSame(1, \App\Support\AdminGuard::activeAdminCount());
 
-        // A non-admin user with users.update tries to deactivate the last admin.
+        // A non-admin user with users.delete tries to deactivate the last admin.
+        // Deactivating requires users.delete; the anti-lockout guard fires after
+        // the permission check passes.
         $manager = User::factory()->create();
         \Spatie\Permission\Models\Role::create(['name' => 'UserManager', 'guard_name' => 'web'])
-            ->givePermissionTo(['users.read', 'users.update']);
+            ->givePermissionTo(['users.read', 'users.delete']);
         $manager->assignRole('UserManager');
 
         $this->patchJson("/api/users/{$lastAdmin->id}/status", ['status' => 'INACTIVE'], $this->authHeaders($manager))

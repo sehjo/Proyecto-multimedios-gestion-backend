@@ -166,7 +166,9 @@ class UserController extends Controller
      * Change user status.
      *
      * Activates or deactivates a user (ACTIVE ↔ INACTIVE). Deactivating a user
-     * revokes their active sessions. Requires the `users.update` permission.
+     * revokes their active sessions. Fine-grained permission is enforced per
+     * direction: reactivating (→ ACTIVE) requires `users.update`; deactivating
+     * (→ INACTIVE) requires `users.delete`.
      */
     public function changeStatus(ChangeUserStatusRequest $request, User $user): JsonResponse
     {
@@ -176,6 +178,16 @@ class UserController extends Controller
         // Self-protection: an admin cannot change their own status.
         if ($request->user()->id === $user->id) {
             return $this->selfActionError('No puedes cambiar tu propio estado.');
+        }
+
+        // Direction-based permission check:
+        //   → INACTIVE  requires users.delete  (treated as a destructive action)
+        //   → ACTIVE    requires users.update   (treated as an update action)
+        if ($newStatus === UserStatus::Inactive && ! $request->user()->can('users.delete')) {
+            return $this->forbiddenError('No tienes permiso para desactivar usuarios.');
+        }
+        if ($newStatus === UserStatus::Active && ! $request->user()->can('users.update')) {
+            return $this->forbiddenError('No tienes permiso para activar usuarios.');
         }
 
         // No-op: same status requested, nothing to do.
@@ -211,6 +223,15 @@ class UserController extends Controller
             'success'    => false,
             'message'    => $message,
             'error_code' => 'SELF_ACTION_FORBIDDEN',
+        ], 403);
+    }
+
+    private function forbiddenError(string $message): JsonResponse
+    {
+        return response()->json([
+            'success'    => false,
+            'message'    => $message,
+            'error_code' => 'FORBIDDEN',
         ], 403);
     }
 

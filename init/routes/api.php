@@ -94,9 +94,11 @@ Route::middleware('auth:sanctum')->group(function () use ($registerCrud) {
     Route::match(['put', 'patch'], 'users/{user}', [UserController::class, 'update'])
         ->middleware('permission:users.update')->whereNumber('user')->name('users.update');
 
-    // Activate / deactivate a user (status change).
+    // Activate / deactivate a user (status change). Both directions share the
+    // same route; fine-grained permission (users.delete to deactivate,
+    // users.update to reactivate) is enforced inside the controller action.
     Route::patch('users/{user}/status', [UserController::class, 'changeStatus'])
-        ->middleware('permission:users.update')->whereNumber('user')->name('users.status');
+        ->whereNumber('user')->name('users.status');
 
     // Manage a user's roles (a user can hold several roles).
     // PUT replaces the whole set atomically (for "edit all roles" UIs); POST/DELETE
