@@ -63,22 +63,41 @@ class Auth
     }
 
     /**
-     * Permission names granted to the user's role (users_type).
+     * Effective permission names for the user: the union of every role the user
+     * holds (user_has_roles). Falls back to the primary user_type_id if the user
+     * has no rows in the pivot yet.
      *
      * @return array<int, string>
      */
     public static function permissions(User $user): array
     {
+        $userId = $user->getId();
+
+        if ($userId !== null) {
+            $names = PermissionRepository::namesForUser($userId);
+            if ($names !== []) {
+                return $names;
+            }
+        }
+
+        // Fallback: a user without pivot rows still gets its primary role.
         $userTypeId = $user->getUserTypeId();
 
         return $userTypeId === null ? [] : PermissionRepository::namesForUserType($userTypeId);
     }
 
     /**
-     * Whether the user holds a given permission through its role.
+     * Whether the user holds a given permission through ANY of its roles.
      */
     public static function can(User $user, string $permission): bool
     {
+        $userId = $user->getId();
+
+        if ($userId !== null && PermissionRepository::userHas($userId, $permission)) {
+            return true;
+        }
+
+        // Fallback to the primary role for users without pivot rows.
         $userTypeId = $user->getUserTypeId();
 
         return $userTypeId !== null && PermissionRepository::userTypeHas($userTypeId, $permission);

@@ -120,8 +120,12 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 -- ---------------------------------------------------------------------------
 -- Roles & permissions (ported from the Laravel Spatie module).
 -- Roles ARE the existing users_types rows; permissions hang off them via the
--- usertype_has_permissions pivot. A user's role is users.user_type_id, so a
--- user holds exactly one role (matching how dev already works).
+-- usertype_has_permissions pivot.
+--
+-- Users can hold SEVERAL roles via user_has_roles (many-to-many). The legacy
+-- users.user_type_id is kept as the "primary role" (the first one assigned),
+-- so the other modules that reference it keep working. A user's effective
+-- permissions are the UNION of all the roles in user_has_roles.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS permissions (
@@ -137,6 +141,15 @@ CREATE TABLE IF NOT EXISTS usertype_has_permissions (
     PRIMARY KEY (user_type_id, permission_id),
     CONSTRAINT fk_uthp_user_type FOREIGN KEY (user_type_id) REFERENCES users_types (id) ON DELETE CASCADE,
     CONSTRAINT fk_uthp_permission FOREIGN KEY (permission_id) REFERENCES permissions (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Many-to-many: every role a user holds (includes the primary user_type_id).
+CREATE TABLE IF NOT EXISTS user_has_roles (
+    user_id BIGINT UNSIGNED NOT NULL,
+    user_type_id BIGINT UNSIGNED NOT NULL,
+    PRIMARY KEY (user_id, user_type_id),
+    CONSTRAINT fk_uhr_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_uhr_user_type FOREIGN KEY (user_type_id) REFERENCES users_types (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------

@@ -15,6 +15,9 @@ class User
     /** Role name resolved via JOIN with users_types (not a users column). */
     private ?string $roleName = null;
 
+    /** All role names the user holds (loaded on demand from user_has_roles). */
+    private ?array $roleNames = null;
+
     public function __construct(
         ?int $id = null,
         ?string $name = null,
@@ -137,6 +140,18 @@ class User
     public function setRoleName(?string $roleName): void
     {
         $this->roleName = $roleName;
+    }
+
+    /** @return array<int, string>|null */
+    public function getRoleNames(): ?array
+    {
+        return $this->roleNames;
+    }
+
+    /** @param array<int, string> $roleNames */
+    public function setRoleNames(array $roleNames): void
+    {
+        $this->roleNames = $roleNames;
     }
 
     public function getCreatedAt(): ?string

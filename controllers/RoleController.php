@@ -211,11 +211,67 @@ class RoleController
             return;
         }
 
-        $oldRole = $user->getRoleName();
-        $updated = UserRepository::update((int) $userId, ['user_type_id' => (int) $data['user_type_id']]);
+        $oldRoles = UserRepository::roleNames((int) $userId);
+        // Single-role assignment = a one-element role set (keeps the pivot in sync).
+        $updated = UserRepository::syncRoles((int) $userId, [(int) $data['user_type_id']]);
+        $updated->setRoleNames(UserRepository::roleNames((int) $userId));
 
         AuditLogger::userLog('UPDATE', $actor, $updated, [
-            'role' => ['old' => $oldRole, 'new' => $updated->getRoleName()],
+            'roles' => ['old' => $oldRoles, 'new' => $updated->getRoleNames()],
+        ]);
+
+        Response::json(UserResource::toArray($updated));
+    }
+
+    /**
+     * Replace a user's whole role set (multi-role). Requires users.update.
+     * Body: { roles: [user_type_id, ...] }; the first id becomes the primary
+     * role (users.user_type_id). Self-protection applies.
+     */
+    public function syncUserRoles(Request $request, $userId): void
+    {
+        if (!$actor = Guard::permission($request, 'users.update')) {
+            return;
+        }
+
+        $user = UserRepository::findById((int) $userId);
+
+        if (!$user) {
+            Response::json(['message' => 'Usuario no encontrado.'], 404);
+
+            return;
+        }
+
+        if ($actor->getId() === $user->getId()) {
+            Response::error('No puedes cambiar tus propios roles.', 'SELF_ACTION_FORBIDDEN', 403);
+
+            return;
+        }
+
+        $roles = $request->input('roles');
+
+        if (!is_array($roles) || $roles === []) {
+            Response::validationError(['roles' => ['Debes enviar al menos un rol.']]);
+
+            return;
+        }
+
+        // Validate every id exists as a role (users_types).
+        $roleIds = array_map('intval', $roles);
+        foreach ($roleIds as $rid) {
+            if (!RoleRepository::findById($rid)) {
+                Response::validationError(['roles' => ["El rol $rid no es válido."]]);
+
+                return;
+            }
+        }
+
+        $oldRoles = UserRepository::roleNames((int) $userId);
+        $updated = UserRepository::syncRoles((int) $userId, $roleIds);
+        $updated->setRoleNames(UserRepository::roleNames((int) $userId));
+
+        AuditLogger::userLog('UPDATE', $actor, $updated, [
+            'roles' => ['old' => $oldRoles, 'new' => $updated->getRoleNames()],
         ]);
 
         Response::json(UserResource::toArray($updated));

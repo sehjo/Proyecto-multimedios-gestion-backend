@@ -125,3 +125,10 @@ INSERT INTO usertype_has_permissions (user_type_id, permission_id)
 INSERT INTO usertype_has_permissions (user_type_id, permission_id)
     SELECT 4, id FROM permissions
     WHERE name IN ('patients.read', 'diagnoses.read', 'diseases.read');
+
+-- ---------------------------------------------------------------------------
+-- user_has_roles: seed each user with their current user_type_id as the only
+-- role (the primary one). Multi-role assignments are added via the API.
+-- ---------------------------------------------------------------------------
+INSERT INTO user_has_roles (user_id, user_type_id)
+    SELECT id, user_type_id FROM users;

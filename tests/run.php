@@ -113,6 +113,21 @@ check(
     $requiredPermission('ACTIVE') === 'users.update'
 );
 
+// -------------------------------------------------------------------------
+// Multi-role: the primary role (users.user_type_id) is the FIRST one assigned,
+// after deduplicating while preserving order. Mirrors UserRepository::syncRoles.
+// -------------------------------------------------------------------------
+$primaryRole = function (array $roleIds): ?int {
+    $roleIds = array_values(array_unique(array_map('intval', $roleIds)));
+
+    return $roleIds[0] ?? null;
+};
+
+check('syncRoles: el rol principal es el primero de la lista', $primaryRole([3, 2]) === 3);
+check('syncRoles: con orden distinto cambia el principal', $primaryRole([2, 3]) === 2);
+check('syncRoles: deduplica conservando el orden (primero gana)', $primaryRole([2, 2, 3]) === 2);
+check('syncRoles: lista vacía no tiene rol principal', $primaryRole([]) === null);
+
 echo "\n";
 
 if ($failures > 0) {

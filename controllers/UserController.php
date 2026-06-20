@@ -108,6 +108,9 @@ class UserController
             return;
         }
 
+        // Load all roles so the response includes the full set.
+        $user->setRoleNames(UserRepository::roleNames($user->getId()));
+
         Response::json(UserResource::toArray($user));
     }
 

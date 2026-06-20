@@ -25,6 +25,7 @@ $router->get('/api/dashboard', [DashboardController::class, 'index']);
 $router->get('/api/stats/users/by-role', [UserController::class, 'statsByRole']);
 $router->get('/api/stats/users/by-status', [UserController::class, 'statsByStatus']);
 $router->put('/api/users/{userId}/role', [RoleController::class, 'assignToUser']);
+$router->put('/api/users/{userId}/roles', [RoleController::class, 'syncUserRoles']);
 $router->put('/api/users/{id}/status', [UserController::class, 'changeStatus']);
 
 $router->resource('api/users', UserController::class);

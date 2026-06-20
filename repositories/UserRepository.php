@@ -144,7 +144,13 @@ class UserRepository
             'status' => $data['status'] ?? 'ACTIVE',
         ]);
 
-        return self::findById((int) db()->lastInsertId());
+        $id = (int) db()->lastInsertId();
+
+        // Keep the role pivot in sync: the creation role is the user's first role.
+        $pivot = db()->prepare('INSERT INTO user_has_roles (user_id, user_type_id) VALUES (:user_id, :role_id)');
+        $pivot->execute(['user_id' => $id, 'role_id' => $data['user_type_id']]);
+
+        return self::findById($id);
     }
 
     public static function updateStatus(int $id, string $status): ?User
@@ -199,6 +205,79 @@ class UserRepository
         $stmt->execute(['id' => $id]);
 
         return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * Role ids the user holds (from user_has_roles).
+     *
+     * @return array<int, int>
+     */
+    public static function roleIds(int $userId): array
+    {
+        $stmt = db()->prepare('SELECT user_type_id FROM user_has_roles WHERE user_id = :id');
+        $stmt->execute(['id' => $userId]);
+
+        return array_map('intval', array_column($stmt->fetchAll(), 'user_type_id'));
+    }
+
+    /**
+     * Role names the user holds (from user_has_roles), ordered by name.
+     *
+     * @return array<int, string>
+     */
+    public static function roleNames(int $userId): array
+    {
+        $stmt = db()->prepare(
+            'SELECT ut.name
+             FROM user_has_roles uhr
+             INNER JOIN users_types ut ON ut.id = uhr.user_type_id
+             WHERE uhr.user_id = :id
+             ORDER BY ut.name ASC'
+        );
+        $stmt->execute(['id' => $userId]);
+
+        return array_map(fn ($row) => $row['name'], $stmt->fetchAll());
+    }
+
+    /**
+     * Replaces a user's whole role set. The FIRST role becomes the primary one
+     * (users.user_type_id) so the modules that read it keep working. Runs in a
+     * transaction so the pivot and the primary stay consistent.
+     *
+     * @param  array<int, int>  $roleIds  ordered; first = primary role
+     */
+    public static function syncRoles(int $userId, array $roleIds): ?User
+    {
+        // Deduplicate while preserving order (first occurrence wins as primary).
+        $roleIds = array_values(array_unique(array_map('intval', $roleIds)));
+
+        if ($roleIds === []) {
+            return self::findById($userId);
+        }
+
+        $db = db();
+        $db->beginTransaction();
+
+        try {
+            $del = $db->prepare('DELETE FROM user_has_roles WHERE user_id = :id');
+            $del->execute(['id' => $userId]);
+
+            $ins = $db->prepare('INSERT INTO user_has_roles (user_id, user_type_id) VALUES (:user_id, :role_id)');
+            foreach ($roleIds as $roleId) {
+                $ins->execute(['user_id' => $userId, 'role_id' => $roleId]);
+            }
+
+            // Primary role = first in the list.
+            $upd = $db->prepare('UPDATE users SET user_type_id = :role_id, updated_at = NOW() WHERE id = :id');
+            $upd->execute(['role_id' => $roleIds[0], 'id' => $userId]);
+
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            throw $e;
+        }
+
+        return self::findById($userId);
     }
 
     /**

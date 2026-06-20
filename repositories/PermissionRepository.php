@@ -63,6 +63,45 @@ class PermissionRepository
     }
 
     /**
+     * Effective permission names for a user: the UNION of the permissions of
+     * every role the user holds (user_has_roles). Deduplicated and ordered.
+     *
+     * @return array<int, string>
+     */
+    public static function namesForUser(int $userId): array
+    {
+        $stmt = db()->prepare(
+            'SELECT DISTINCT p.name
+             FROM permissions p
+             INNER JOIN usertype_has_permissions uhp ON uhp.permission_id = p.id
+             INNER JOIN user_has_roles uhr ON uhr.user_type_id = uhp.user_type_id
+             WHERE uhr.user_id = :user_id
+             ORDER BY p.name ASC'
+        );
+        $stmt->execute(['user_id' => $userId]);
+
+        return array_map(fn ($row) => $row['name'], $stmt->fetchAll());
+    }
+
+    /**
+     * Whether a user holds a permission through ANY of its roles.
+     */
+    public static function userHas(int $userId, string $permission): bool
+    {
+        $stmt = db()->prepare(
+            'SELECT 1
+             FROM user_has_roles uhr
+             INNER JOIN usertype_has_permissions uhp ON uhp.user_type_id = uhr.user_type_id
+             INNER JOIN permissions p ON p.id = uhp.permission_id
+             WHERE uhr.user_id = :user_id AND p.name = :name
+             LIMIT 1'
+        );
+        $stmt->execute(['user_id' => $userId, 'name' => $permission]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /**
      * Replaces the whole permission set of a role with the given names.
      * Expands the read/write cascade so a write permission always implies read.
      *
