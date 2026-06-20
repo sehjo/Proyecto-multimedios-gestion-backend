@@ -32,9 +32,14 @@ class AuthController
 
         $token = Auth::issueToken($user);
 
+        // Include permissions so the front can drive UI gates without an extra
+        // call to /user. With multi-role, this is the union across all roles.
+        $payload = UserResource::toArray($user);
+        $payload['permissions'] = Auth::permissions($user);
+
         Response::json([
             'token' => $token,
-            'user' => UserResource::toArray($user),
+            'user' => $payload,
         ]);
     }
 
