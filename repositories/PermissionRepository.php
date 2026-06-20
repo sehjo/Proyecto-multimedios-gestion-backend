@@ -120,13 +120,16 @@ class PermissionRepository
 
             if ($names !== []) {
                 $placeholders = implode(',', array_fill(0, count($names), '?'));
+                // All-positional placeholders: PDO does not allow mixing named
+                // (:user_type_id) and positional (?) parameters in one statement.
+                // Slot 1 is the user_type_id; the names start at slot 2.
                 $ins = $db->prepare(
                     "INSERT INTO usertype_has_permissions (user_type_id, permission_id)
-                     SELECT :user_type_id, id FROM permissions WHERE name IN ($placeholders)"
+                     SELECT ?, id FROM permissions WHERE name IN ($placeholders)"
                 );
-                $ins->bindValue(':user_type_id', $userTypeId, PDO::PARAM_INT);
+                $ins->bindValue(1, $userTypeId, PDO::PARAM_INT);
                 foreach ($names as $i => $name) {
-                    $ins->bindValue($i + 1, $name);
+                    $ins->bindValue($i + 2, $name);
                 }
                 $ins->execute();
             }

@@ -85,7 +85,16 @@ class RoleController
             return;
         }
 
+        // A role must hold at least one (valid) permission. The Validator has no
+        // 'array'/'min' rule for lists, so this is checked explicitly here.
         $permissions = self::validPermissions($data['permissions'] ?? []);
+
+        if ($permissions === []) {
+            Response::validationError(['permissions' => ['El rol debe tener al menos un permiso válido.']]);
+
+            return;
+        }
+
         $role = RoleRepository::create($data['name'], $permissions);
 
         AuditLogger::roleLog('CREATE', $actor, $role, [
