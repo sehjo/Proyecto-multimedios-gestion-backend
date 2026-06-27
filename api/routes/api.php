@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../controller/authController.php';
@@ -84,8 +84,8 @@ if ($recurso === 'patients') {
     if ($id === 'logs' && $method === 'GET') { $ctrl->logs(); exit; }
 
     match (true) {
-        $id === null && $method === 'GET'                      => $ctrl->list(),
-        $id === null && $method === 'POST'                     => $ctrl->save(),
+        $id === null && $method === 'GET'                      => $ctrl->index(),
+        $id === null && $method === 'POST'                     => $ctrl->store(),
         $id !== null && $method === 'GET' && $subRec === null  => $ctrl->show(parseNumericId($id)),
         $id !== null && in_array($method, ['PUT','PATCH'])     => $ctrl->update(parseNumericId($id)),
         $id !== null && $method === 'DELETE'                   => $ctrl->destroy(parseNumericId($id)),
@@ -100,8 +100,8 @@ if ($recurso === 'patients') {
 if ($recurso === 'companions') {
     $ctrl = new CompanionController();
     match (true) {
-        $id === null && $method === 'GET'                  => $ctrl->list(),
-        $id === null && $method === 'POST'                 => $ctrl->save(),
+        $id === null && $method === 'GET'                  => $ctrl->index(),
+        $id === null && $method === 'POST'                 => $ctrl->store(),
         $id !== null && $method === 'GET'                  => $ctrl->show(parseNumericId($id)),
         $id !== null && in_array($method, ['PUT','PATCH']) => $ctrl->update(parseNumericId($id)),
         $id !== null && $method === 'DELETE'               => $ctrl->destroy(parseNumericId($id)),
@@ -130,8 +130,8 @@ if ($recurso === 'appointments') {
     if ($id !== null && $subRec === 'confirm-attendance' && $method === 'GET')   { $ctrl->confirmAttendance(parseNumericId($id)); exit; }
 
     match (true) {
-        $id === null && $method === 'GET'                  => $ctrl->list(),
-        $id === null && $method === 'POST'                 => $ctrl->save(),
+        $id === null && $method === 'GET'                  => $ctrl->index(),
+        $id === null && $method === 'POST'                 => $ctrl->store(),
         $id !== null && $method === 'GET'                  => $ctrl->show(parseNumericId($id)),
         $id !== null && in_array($method, ['PUT','PATCH']) => $ctrl->update(parseNumericId($id)),
         $id !== null && $method === 'DELETE'               => $ctrl->destroy(parseNumericId($id)),
@@ -147,7 +147,7 @@ if ($recurso === 'guest-appointments') {
     $ctrl = new GuestAppointmentController();
     match (true) {
         $id === 'start' && $method === 'POST' => $ctrl->start(),
-        $id === null    && $method === 'POST' => $ctrl->save(),
+        $id === null    && $method === 'POST' => $ctrl->store(),
         default => jsonResponse('error', 'Método no permitido.', null, null, null, 405),
     };
     exit;
@@ -172,8 +172,8 @@ if ($recurso === 'users') {
     if ($id !== null && $subRec === 'permissions' && $subParam !== null   && $method === 'DELETE') { $ctrl->revokePermission(parseNumericId($id), $subParam); exit; }
 
     match (true) {
-        $id === null && $method === 'GET'                      => $ctrl->list(),
-        $id === null && $method === 'POST'                     => $ctrl->save(),
+        $id === null && $method === 'GET'                      => $ctrl->index(),
+        $id === null && $method === 'POST'                     => $ctrl->store(),
         $id !== null && $method === 'GET' && $subRec === null  => $ctrl->show(parseNumericId($id)),
         $id !== null && $method === 'PUT' && $subRec === null  => $ctrl->update(parseNumericId($id)),
         default => jsonResponse('error', 'Método no permitido.', null, null, null, 405),
@@ -190,8 +190,8 @@ if ($recurso === 'roles') {
     if ($id === 'logs' && $method === 'GET') { $ctrl->logs(); exit; }
 
     match (true) {
-        $id === null && $method === 'GET'                  => $ctrl->list(),
-        $id === null && $method === 'POST'                 => $ctrl->save(),
+        $id === null && $method === 'GET'                  => $ctrl->index(),
+        $id === null && $method === 'POST'                 => $ctrl->store(),
         $id !== null && in_array($method, ['PUT','PATCH']) => $ctrl->update(parseNumericId($id)),
         $id !== null && $method === 'DELETE'               => $ctrl->destroy(parseNumericId($id)),
         default => jsonResponse('error', 'Método no permitido.', null, null, null, 405),
@@ -204,7 +204,7 @@ if ($recurso === 'roles') {
 // =========================================================================
 if ($recurso === 'permissions') {
     if ($method === 'GET') {
-        (new PermissionController())->list();
+        (new PermissionController())->index();
     } else {
         jsonResponse('error', 'Método no permitido.', null, null, null, 405);
     }
@@ -230,7 +230,7 @@ if ($recurso === 'notifications') {
     if ($id !== null && $subRec === 'unread' && $method === 'PATCH') { $ctrl->markAsUnread(parseNumericId($id)); exit; }
 
     match (true) {
-        $id === null && $method === 'GET'    => $ctrl->list(),
+        $id === null && $method === 'GET'    => $ctrl->index(),
         $id !== null && $method === 'DELETE' => $ctrl->destroy(parseNumericId($id)),
         default => jsonResponse('error', 'Método no permitido.', null, null, null, 405),
     };
@@ -243,8 +243,8 @@ if ($recurso === 'notifications') {
 if ($recurso === 'institution-availability') {
     $ctrl = new AvailabilityController();
     match (true) {
-        $id === null && $method === 'GET'                  => $ctrl->list(),
-        $id === null && $method === 'POST'                 => $ctrl->save(),
+        $id === null && $method === 'GET'                  => $ctrl->index(),
+        $id === null && $method === 'POST'                 => $ctrl->store(),
         $id !== null && $method === 'GET'                  => $ctrl->show(parseNumericId($id)),
         $id !== null && in_array($method, ['PUT','PATCH']) => $ctrl->update(parseNumericId($id)),
         $id !== null && $method === 'DELETE'               => $ctrl->destroy(parseNumericId($id)),
@@ -259,8 +259,8 @@ if ($recurso === 'institution-availability') {
 if ($recurso === 'institution-blocks') {
     $ctrl = new BlockController();
     match (true) {
-        $id === null && $method === 'GET'                  => $ctrl->list(),
-        $id === null && $method === 'POST'                 => $ctrl->save(),
+        $id === null && $method === 'GET'                  => $ctrl->index(),
+        $id === null && $method === 'POST'                 => $ctrl->store(),
         $id !== null && $method === 'GET'                  => $ctrl->show(parseNumericId($id)),
         $id !== null && in_array($method, ['PUT','PATCH']) => $ctrl->update(parseNumericId($id)),
         $id !== null && $method === 'DELETE'               => $ctrl->destroy(parseNumericId($id)),
@@ -275,7 +275,7 @@ if ($recurso === 'institution-blocks') {
 if ($recurso === 'institution-logs') {
     $ctrl = new InstitutionLogController();
     match (true) {
-        $id === null && $method === 'GET' => $ctrl->list(),
+        $id === null && $method === 'GET' => $ctrl->index(),
         $id !== null && $method === 'GET' => $ctrl->show(parseNumericId($id)),
         default => jsonResponse('error', 'Método no permitido.', null, null, null, 405),
     };

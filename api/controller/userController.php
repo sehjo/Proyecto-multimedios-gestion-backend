@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../dao/userDao.php';
@@ -34,7 +34,7 @@ class UserController
             'status' => $_GET['status'] ?? null,
         ];
 
-        $usuarios = $this->dao->list($perPage, $offset, $filters);
+        $usuarios = $this->dao->index($perPage, $offset, $filters);
         $total    = $this->dao->countTotal($filters);
 
         foreach ($usuarios as &$u) {
@@ -72,7 +72,7 @@ class UserController
             jsonResponse('error', 'Error de validación.', null, $errors, null, 422);
         }
 
-        $newId = $this->dao->save([
+        $newId = $this->dao->store([
             'name'       => $json['name'],
             'identifier' => $json['identifier'],
             'email'      => $json['email'],
@@ -111,7 +111,7 @@ class UserController
         }
 
         $passwordPlain = $json['password'];
-        $newId       = $this->dao->save($json);
+        $newId       = $this->dao->store($json);
         $created         = $this->dao->findById($newId);
         $created['roles'] = $this->dao->userRoles($newId);
 

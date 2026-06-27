@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../dao/institutionLogDao.php';
@@ -28,7 +28,7 @@ class InstitutionLogController
             'to'           => $_GET['to']           ?? null,
         ];
 
-        $datos = $this->dao->list($perPage, $offset, $filters);
+        $datos = $this->dao->index($perPage, $offset, $filters);
         $total = $this->dao->countTotal($filters);
 
         jsonResponse('success', 'Logs institucionales obtenidos correctamente.', $datos, null, [

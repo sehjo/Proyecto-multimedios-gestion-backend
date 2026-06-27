@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../dao/availabilityDao.php';
@@ -18,7 +18,7 @@ class AvailabilityController
         $enabled = isset($_GET['enabled'])
             ? filter_var($_GET['enabled'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
             : null;
-        jsonResponse('success', 'Disponibilidad institucional obtenida correctamente.', $this->dao->list($enabled));
+        jsonResponse('success', 'Disponibilidad institucional obtenida correctamente.', $this->dao->index($enabled));
     }
 
     public function show(int $id): void
@@ -73,7 +73,7 @@ class AvailabilityController
             }
         }
 
-        $newId = $this->dao->save($json);
+        $newId = $this->dao->store($json);
         $created   = $this->dao->findById($newId);
         $this->dao->logAction($actor['id'] ?? null, 'InstitutionAvailability', $newId, 'Create', null);
 

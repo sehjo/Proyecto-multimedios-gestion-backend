@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../dao/permissionDao.php';
@@ -15,6 +15,6 @@ class PermissionController
     public function index(): void
     {
         requireAuth();
-        jsonResponse('success', 'Permisos obtenidos correctamente.', $this->dao->list());
+        jsonResponse('success', 'Permisos obtenidos correctamente.', $this->dao->index());
     }
 }

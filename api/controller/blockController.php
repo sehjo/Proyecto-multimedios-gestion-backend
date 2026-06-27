@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../dao/blockDao.php';
@@ -21,7 +21,7 @@ class BlockController
             'from'     => $_GET['from']     ?? null,
             'to'       => $_GET['to']       ?? null,
         ];
-        jsonResponse('success', 'Bloqueos institucionales obtenidos correctamente.', $this->dao->list($filters));
+        jsonResponse('success', 'Bloqueos institucionales obtenidos correctamente.', $this->dao->index($filters));
     }
 
     public function show(int $id): void
@@ -71,7 +71,7 @@ class BlockController
             jsonResponse('error', 'Error de validación.', null, $errors, null, 422);
         }
 
-        $newId = $this->dao->save($json, (int) $actor['id']);
+        $newId = $this->dao->store($json, (int) $actor['id']);
         $created   = $this->dao->findById($newId);
         $this->dao->logAction($actor['id'] ?? null, $newId, 'Create', null);
 

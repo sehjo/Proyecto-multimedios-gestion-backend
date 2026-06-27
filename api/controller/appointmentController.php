@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../dao/appointmentDao.php';
@@ -29,7 +29,7 @@ class AppointmentController
             'date'           => $_GET['date']           ?? null,
         ];
 
-        $datos = $this->dao->list($perPage, $offset, $filters);
+        $datos = $this->dao->index($perPage, $offset, $filters);
         $total = $this->dao->countTotal($filters);
 
         jsonResponse('success', 'Citas obtenidas correctamente.', $datos, null, [
@@ -71,7 +71,7 @@ class AppointmentController
         $appointment->setAppointmentDatetime($json['appointment_datetime']);
         $appointment->setStatus('pending');
 
-        $newId = $this->dao->save($appointment);
+        $newId = $this->dao->store($appointment);
 
         $this->dao->logAction($actor['id'] ?? null, $newId, 'Create', null);
 

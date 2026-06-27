@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../dao/roleDao.php';
@@ -15,7 +15,7 @@ class RoleController
     public function index(): void
     {
         requireAuth();
-        jsonResponse('success', 'Roles obtenidos correctamente.', $this->dao->list());
+        jsonResponse('success', 'Roles obtenidos correctamente.', $this->dao->index());
     }
 
     public function store(): void
@@ -36,7 +36,7 @@ class RoleController
             jsonResponse('error', 'Error de validación.', null, $errors, null, 422);
         }
 
-        $newId = $this->dao->save($json['name'], $json['permissions']);
+        $newId = $this->dao->store($json['name'], $json['permissions']);
         $created   = $this->dao->findById($newId);
 
         $this->dao->logAction($actor['id'] ?? null, $newId, 'Create', null);

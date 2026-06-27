@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../dao/patientDao.php';
@@ -27,7 +27,7 @@ class PatientController
             'user_type'  => $_GET['user_type']  ?? null,
         ];
 
-        $datos = $this->dao->list($perPage, $offset, $filters);
+        $datos = $this->dao->index($perPage, $offset, $filters);
         $total = $this->dao->countTotal($filters);
 
         jsonResponse('success', 'Pacientes obtenidos correctamente.', $datos, null, [
@@ -70,7 +70,7 @@ class PatientController
         $patient->setUserType($json['user_type']);
         $patient->setPhone($json['phone']);
 
-        $newId = $this->dao->save($patient);
+        $newId = $this->dao->store($patient);
         $created   = $this->dao->findById($newId);
 
         $this->dao->logAction($actor['id'] ?? null, $newId, 'Create', null);

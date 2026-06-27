@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../dao/companionDao.php';
@@ -26,7 +26,7 @@ class CompanionController
             'identifier' => $_GET['identifier'] ?? null,
         ];
 
-        $datos = $this->dao->list($perPage, $offset, $filters);
+        $datos = $this->dao->index($perPage, $offset, $filters);
         $total = $this->dao->countTotal($filters);
 
         jsonResponse('success', 'Acompañantes obtenidos correctamente.', $datos, null, [
@@ -75,7 +75,7 @@ class CompanionController
         $a->setIdentifier($json['identifier']);
         $a->setPhone($json['phone']);
 
-        $newId = $this->dao->save($a);
+        $newId = $this->dao->store($a);
         $created   = $this->dao->findById($newId);
 
         jsonResponse('success', 'Acompañante registrado correctamente.', $created, null, null, 201);

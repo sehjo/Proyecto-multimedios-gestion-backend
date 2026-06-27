@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 function jsonResponse(string $status, string $message, $data = null, $errors = null, $meta = null, int $httpCode = 200)
 {

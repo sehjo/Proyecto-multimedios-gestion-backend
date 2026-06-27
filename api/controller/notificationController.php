@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../dao/notificationDao.php';
@@ -19,7 +19,7 @@ class NotificationController
         $page    = isset($_GET['page'])     ? max(1, (int) $_GET['page'])     : 1;
         $offset  = ($page - 1) * $perPage;
 
-        $datos = $this->dao->list((int) $actor['id'], $perPage, $offset);
+        $datos = $this->dao->index((int) $actor['id'], $perPage, $offset);
         $total = $this->dao->countTotal((int) $actor['id']);
 
         jsonResponse('success', 'Notificaciones obtenidas correctamente.', $datos, null, [
