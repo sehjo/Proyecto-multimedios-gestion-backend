@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../config/connection.php';
 require_once __DIR__ . '/../models/companion.php';
@@ -55,7 +55,7 @@ class CompanionDao
         return (bool) $stmt->fetch();
     }
 
-    public function store(Acompanante $a): int
+    public function store(Companion $a): int
     {
         $stmt = $this->connection->prepare(
             "INSERT INTO companions (full_name, identifier, phone, created_at)
@@ -70,7 +70,7 @@ class CompanionDao
         return (int) $this->connection->lastInsertId();
     }
 
-    public function update(int $id, Acompanante $a): bool
+    public function update(int $id, Companion $a): bool
     {
         $stmt = $this->connection->prepare(
             "UPDATE companions SET full_name = :full_name, identifier = :identifier, phone = :phone WHERE id = :id"

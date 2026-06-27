@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 require_once __DIR__ . '/../config/connection.php';
 require_once __DIR__ . '/../models/patient.php';
@@ -55,7 +55,7 @@ class PatientDao
         return (bool) $stmt->fetch();
     }
 
-    public function store(Paciente $p): int
+    public function store(Patient $p): int
     {
         $stmt = $this->connection->prepare(
             "INSERT INTO patients (full_name, identifier, email, birth_date, user_type, phone, created_at)
@@ -73,7 +73,7 @@ class PatientDao
         return (int) $this->connection->lastInsertId();
     }
 
-    public function update(int $id, Paciente $p): bool
+    public function update(int $id, Patient $p): bool
     {
         $stmt = $this->connection->prepare(
             "UPDATE patients SET full_name = :full_name, identifier = :identifier, email = :email,
