@@ -1,0 +1,11 @@
+Options -MultiViews
+RewriteEngine On
+
+# Pasar el header Authorization como variable de entorno para PHP-FPM
+# (Apache + FastCGI elimina el header Authorization por defecto)
+RewriteCond %{HTTP:Authorization} ^(.+)$
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%1]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [L,QSA]
