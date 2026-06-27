@@ -1,0 +1,4555 @@
+{
+  "info": {
+    "_postman_id": "proyecto-multimedios-backend-php",
+    "name": "Proyecto Multimedios – Backend PHP",
+    "description": "Colección completa basada en los tests de MediCode-Backend (Laravel). Cubre Auth, Pacientes, Citas, Usuarios, Roles, Permisos, Acompañantes y Estadísticas.\n\n**Configuración rápida:**\n1. Edita las variables `adminEmail` y `adminPassword` con credenciales válidas.\n2. El token se obtiene automáticamente antes de cada petición protegida.\n3. Los IDs (patientId, appointmentId, userId, companionId) se guardan automáticamente al crear cada recurso.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{token}}", "type": "string" }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-login: obtiene un token nuevo si no hay uno activo o si fue limpiado.",
+          "const PUBLIC_PATHS = ['/auth/login', '/auth/forgot-password', '/users/register'];",
+          "const url = pm.request.url.toString();",
+          "const esPublica = PUBLIC_PATHS.some(p => url.includes(p));",
+          "",
+          "if (!esPublica && !pm.collectionVariables.get('token')) {",
+          "    const baseUrl  = pm.collectionVariables.get('baseUrl');",
+          "    const email    = pm.collectionVariables.get('adminEmail');",
+          "    const password = pm.collectionVariables.get('adminPassword');",
+          "",
+          "    pm.sendRequest({",
+          "        url: baseUrl + '/api/v1/auth/login',",
+          "        method: 'POST',",
+          "        header: [{ key: 'Content-Type', value: 'application/json' }],",
+          "        body: {",
+          "            mode: 'raw',",
+          "            raw: JSON.stringify({ email, password })",
+          "        }",
+          "    }, (err, res) => {",
+          "        if (!err && res.code === 200) {",
+          "            const json = res.json();",
+          "            const tok  = json.data && json.data.access_token;",
+          "            if (tok) {",
+          "                pm.collectionVariables.set('token', tok);",
+          "                console.log('[Auto-login] Token guardado correctamente.');",
+          "            } else {",
+          "                console.warn('[Auto-login] Respuesta 200 pero sin access_token.');",
+          "            }",
+          "        } else {",
+          "            console.warn('[Auto-login] Falló (' + (err || res.code) + '). Verifica adminEmail y adminPassword.');",
+          "        }",
+          "    });",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Si se recibe 401 con el token de colección (expirado/revocado),",
+          "// limpiarlo para forzar re-login en la siguiente petición protegida.",
+          "// No aplica a peticiones con auth override explícito (noauth o bearer propio).",
+          "const requestAuthType = pm.request.auth ? pm.request.auth.type : null;",
+          "const usesCollectionAuth = !requestAuthType || requestAuthType === 'inherit';",
+          "if (pm.response.code === 401 && usesCollectionAuth) {",
+          "    pm.collectionVariables.set('token', '');",
+          "    console.warn('[Auth] 401 con token de colección – limpiado para re-login en siguiente petición.');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl",        "value": "http://localhost/Proyecto-multimedios-gestion-backend", "type": "string", "description": "URL raíz del proyecto en Laragon." },
+    { "key": "token",          "value": "", "type": "string",        "description": "Access token. Se rellena automáticamente al hacer login." },
+    { "key": "adminEmail",     "value": "admin@ucr.ac.cr", "type": "string", "description": "Email del usuario administrador para auto-login." },
+    { "key": "adminPassword",  "value": "Password123!", "type": "string",  "description": "Contraseña del administrador para auto-login." },
+    { "key": "patientId",      "value": "1", "type": "string",       "description": "ID del último paciente creado. Se actualiza automáticamente." },
+    { "key": "appointmentId",  "value": "1", "type": "string",       "description": "ID de la última cita creada. Se actualiza automáticamente." },
+    { "key": "userId",         "value": "1", "type": "string",       "description": "ID del último usuario creado. Se actualiza automáticamente." },
+    { "key": "companionId",    "value": "1", "type": "string",       "description": "ID del último acompañante creado. Se actualiza automáticamente." },
+    { "key": "roleId",            "value": "1", "type": "string",  "description": "ID del último rol creado. Se actualiza automáticamente." },
+    { "key": "futureSlot",        "value": "", "type": "string",   "description": "Fecha/hora futura calculada automáticamente para crear citas." },
+    { "key": "notificationId",    "value": "1", "type": "string",  "description": "ID de notificación para tests de lectura/eliminación." },
+    { "key": "availabilityId",    "value": "1", "type": "string",  "description": "ID del slot de disponibilidad institucional." },
+    { "key": "blockId",           "value": "1", "type": "string",  "description": "ID del bloqueo institucional." },
+    { "key": "blockDate",         "value": "", "type": "string",   "description": "Fecha de bloqueo (+30 días). Se calcula automáticamente." },
+    { "key": "blockDate2",        "value": "", "type": "string",   "description": "Segunda fecha de bloqueo (+60 días). Se calcula automáticamente." },
+    { "key": "verifyEmailToken",  "value": "", "type": "string",   "description": "Token de verificación de email (obtenido desde forgot-password en dev)." },
+    { "key": "registerEmail",     "value": "", "type": "string",   "description": "Email único generado automáticamente para registro de usuario." },
+    { "key": "adminSelfId",       "value": "1", "type": "string",  "description": "ID del propio admin autenticado (para tests de auto-modificación)." },
+    { "key": "adminOwnRoleId",    "value": "1", "type": "string",  "description": "ID del rol admin propio (para tests de self-role-modification)." },
+    { "key": "lastAdminId",       "value": "1", "type": "string",  "description": "ID del último admin restante (para test de system lockout)." },
+    { "key": "createdRoleId",     "value": "1", "type": "string",  "description": "ID del rol creado en el flujo de CRUD de roles." },
+    { "key": "targetUserEmail",   "value": "", "type": "string",   "description": "Email del usuario objetivo para actualización (se evita duplicado)." },
+    { "key": "appointmentLogId",  "value": "1", "type": "string",  "description": "ID de log de cita." },
+    { "key": "revokedToken",      "value": "", "type": "string",   "description": "Token previamente revocado (para test de reuso post-logout)." },
+    { "key": "guestSlot",              "value": "", "type": "string", "description": "Slot de fecha/hora para citas de invitado (+90 días)." },
+    { "key": "guestSlot2",             "value": "", "type": "string", "description": "Segundo slot para citas de invitado (+91 días)." },
+    { "key": "guestVerificationToken", "value": "", "type": "string", "description": "Token de verificación obtenido de /guest-appointments/start." },
+    { "key": "newPatientIdentifier",   "value": "", "type": "string", "description": "Identificador único generado por pre-request de 'Crear paciente'." },
+    { "key": "newPatientEmail",        "value": "", "type": "string", "description": "Email único generado por pre-request de 'Crear paciente'." },
+    { "key": "newUserEmail",           "value": "", "type": "string", "description": "Email único generado por pre-request de 'Crear usuario'." }
+  ],
+  "item": [
+
+    {
+      "name": "🔐 Auth",
+      "item": [
+
+        {
+          "name": "Login – Éxito (guarda token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = success', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "});",
+                  "pm.test('Contiene access_token', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data).to.have.property('access_token');",
+                  "    pm.collectionVariables.set('token', json.data.access_token);",
+                  "    console.log('Token guardado:', json.data.access_token.substring(0, 20) + '...');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{adminEmail}}\",\n    \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","login"] },
+            "description": "Login exitoso. Guarda el access_token en la variable `token` para el resto de la colección."
+          }
+        },
+
+        {
+          "name": "Login – Contraseña incorrecta (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('status = error', () => pm.expect(pm.response.json().status).to.eql('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{adminEmail}}\",\n    \"password\": \"ContraseniaIncorrecta999\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","login"] }
+          }
+        },
+
+        {
+          "name": "Login – Body vacío (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Errores en email y password', () => {",
+                  "    const errors = pm.response.json().errors;",
+                  "    pm.expect(errors).to.have.property('email');",
+                  "    pm.expect(errors).to.have.property('password');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","login"] }
+          }
+        },
+
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = success', () => pm.expect(pm.response.json().status).to.eql('success'));",
+                  "// Guardar el token revocado para el test de reuso post-logout",
+                  "pm.collectionVariables.set('revokedToken', pm.collectionVariables.get('token'));",
+                  "// Limpiar token para que las siguientes peticiones hagan auto-login de nuevo",
+                  "pm.collectionVariables.set('token', '');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/logout", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","logout"] },
+            "description": "Invalida el token actual. Después de ejecutarlo, el auto-login volverá a obtener uno nuevo."
+          }
+        },
+
+        {
+          "name": "Logout – Sin token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/logout", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","logout"] }
+          }
+        },
+
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve nuevo access_token', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    if (json.data && json.data.access_token) {",
+                  "        pm.collectionVariables.set('token', json.data.access_token);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/refresh", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","refresh"] }
+          }
+        },
+
+        {
+          "name": "Forgot Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 (respuesta genérica)', () => pm.response.to.have.status(200));",
+                  "pm.test('status = success', () => pm.expect(pm.response.json().status).to.eql('success'));",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.reset_token) {",
+                  "  pm.collectionVariables.set('verifyEmailToken', json.data.reset_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{adminEmail}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/forgot-password", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","forgot-password"] },
+            "description": "Siempre devuelve 200 con mensaje genérico para evitar enumeración de usuarios."
+          }
+        },
+
+        {
+          "name": "Forgot Password – Email inválido (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error en campo email', () => pm.expect(pm.response.json().errors).to.have.property('email'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n    \"email\": \"esto-no-es-un-email\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/forgot-password", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","forgot-password"] }
+          }
+        },
+
+        {
+          "name": "Reset Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Este endpoint requiere un token válido de la tabla password_reset_links.",
+                  "// Reemplaza el 'token' del body con uno real generado por Forgot Password.",
+                  "pm.test('Status esperado (200 ó 422 si el token es placeholder)', () => {",
+                  "    pm.expect([200, 422]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"token\": \"REEMPLAZA_CON_TOKEN_REAL_DE_LA_BD\",\n    \"password\": \"NuevoPass1!\",\n    \"password_confirmation\": \"NuevoPass1!\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/reset-password", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","reset-password"] },
+            "description": "Requiere un token válido de la tabla `password_reset_links`. Genera uno con 'Forgot Password' primero."
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "👤 Pacientes",
+      "item": [
+
+        {
+          "name": "Listar pacientes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estructura con paginación', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    pm.expect(json.meta.pagination).to.have.all.keys('total','per_page','current_page','last_page');",
+                  "    pm.expect(json.data).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/patients?page=1&per_page=10",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","patients"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "10" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Listar pacientes – Filtrar por nombre",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Todos los resultados coinciden con el filtro', () => {",
+                  "    pm.response.json().data.forEach(p => {",
+                  "        pm.expect(p.full_name.toLowerCase()).to.include('juan');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/patients?full_name=Juan",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","patients"],
+              "query": [{ "key": "full_name", "value": "Juan" }]
+            }
+          }
+        },
+
+        {
+          "name": "Listar pacientes – Filtrar por user_type (MINOR)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Todos son menores', () => {",
+                  "    pm.response.json().data.forEach(p => pm.expect(p.user_type).to.eql('MINOR'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/patients?user_type=MINOR",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","patients"],
+              "query": [{ "key": "user_type", "value": "MINOR" }]
+            }
+          }
+        },
+
+        {
+          "name": "Listar pacientes – Sin autenticación (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/patients", "host": ["{{baseUrl}}"], "path": ["api","v1","patients"] }
+          }
+        },
+
+        {
+          "name": "Crear paciente – Éxito (guarda patientId)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const r = String(Math.floor(Math.random() * 900000000) + 100000000);",
+                  "pm.collectionVariables.set('newPatientIdentifier', r[0] + '-' + r.slice(1,5) + '-' + r.slice(5,9));",
+                  "pm.collectionVariables.set('newPatientEmail', 'test' + r + '@ucr.ac.cr');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('status = success y guarda ID', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    pm.expect(json.data).to.have.property('id');",
+                  "    pm.collectionVariables.set('patientId', json.data.id);",
+                  "    console.log('patientId guardado:', json.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"full_name\": \"Juan Carlos Pérez\",\n    \"identifier\": \"{{newPatientIdentifier}}\",\n    \"email\": \"{{newPatientEmail}}\",\n    \"birth_date\": \"1990-05-15\",\n    \"user_type\": \"ADULT\",\n    \"phone\": \"8888-8888\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/patients", "host": ["{{baseUrl}}"], "path": ["api","v1","patients"] },
+            "description": "Campos requeridos: full_name, identifier (formato X-XXXX-XXXX), email, birth_date (pasado), user_type, phone (formato XXXX-XXXX)."
+          }
+        },
+
+        {
+          "name": "Crear paciente – Campos faltantes (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Errores en todos los campos requeridos', () => {",
+                  "    const errors = pm.response.json().errors;",
+                  "    ['full_name','identifier','email','birth_date','user_type','phone'].forEach(f => {",
+                  "        pm.expect(errors, `Falta error en '${f}'`).to.have.property(f);",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/patients", "host": ["{{baseUrl}}"], "path": ["api","v1","patients"] }
+          }
+        },
+
+        {
+          "name": "Crear paciente – Identificador inválido (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error en identifier', () => pm.expect(pm.response.json().errors).to.have.property('identifier'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"full_name\": \"Paciente Test\",\n    \"identifier\": \"formato-invalido\",\n    \"email\": \"test@ucr.ac.cr\",\n    \"birth_date\": \"1990-01-01\",\n    \"user_type\": \"ADULT\",\n    \"phone\": \"8888-8888\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/patients", "host": ["{{baseUrl}}"], "path": ["api","v1","patients"] }
+          }
+        },
+
+        {
+          "name": "Crear paciente – Teléfono inválido (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error en phone', () => pm.expect(pm.response.json().errors).to.have.property('phone'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"full_name\": \"Paciente Test\",\n    \"identifier\": \"1-2345-0001\",\n    \"email\": \"test2@ucr.ac.cr\",\n    \"birth_date\": \"1990-01-01\",\n    \"user_type\": \"ADULT\",\n    \"phone\": \"12345678\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/patients", "host": ["{{baseUrl}}"], "path": ["api","v1","patients"] }
+          }
+        },
+
+        {
+          "name": "Crear paciente – Fecha de nacimiento futura (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error en birth_date', () => pm.expect(pm.response.json().errors).to.have.property('birth_date'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"full_name\": \"Paciente Test\",\n    \"identifier\": \"1-2345-0002\",\n    \"email\": \"futuro@ucr.ac.cr\",\n    \"birth_date\": \"2099-01-01\",\n    \"user_type\": \"ADULT\",\n    \"phone\": \"7777-7777\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/patients", "host": ["{{baseUrl}}"], "path": ["api","v1","patients"] }
+          }
+        },
+
+        {
+          "name": "Ver paciente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Contiene campos esperados', () => {",
+                  "    const d = pm.response.json().data;",
+                  "    ['id','full_name','identifier','email','birth_date','user_type','phone'].forEach(f => {",
+                  "        pm.expect(d, `Falta campo '${f}'`).to.have.property(f);",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/patients/{{patientId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","patients","{{patientId}}"] }
+          }
+        },
+
+        {
+          "name": "Ver paciente – No encontrado (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/patients/99999", "host": ["{{baseUrl}}"], "path": ["api","v1","patients","99999"] }
+          }
+        },
+
+        {
+          "name": "Actualizar paciente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Nombre actualizado', () => {",
+                  "    pm.expect(pm.response.json().data.full_name).to.eql('Nombre Actualizado');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"full_name\": \"Nombre Actualizado\",\n    \"phone\": \"1111-2222\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/patients/{{patientId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","patients","{{patientId}}"] }
+          }
+        },
+
+        {
+          "name": "Actualizar paciente – Identificador duplicado (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error en identifier', () => pm.expect(pm.response.json().errors).to.have.property('identifier'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"identifier\": \"2-0223-4567\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/patients/{{patientId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","patients","{{patientId}}"] },
+            "description": "El identificador '2-0223-4567' pertenece al paciente 2 del seed; al intentar asignárselo al paciente recién creado, se espera error 422."
+          }
+        },
+
+        {
+          "name": "Eliminar paciente (204)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/patients/{{patientId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","patients","{{patientId}}"] }
+          }
+        },
+
+        {
+          "name": "Logs de pacientes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Retorna array de logs', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/logs/patients", "host": ["{{baseUrl}}"], "path": ["api","v1","logs","patients"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "📅 Citas",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Calcular una fecha/hora futura (90 días desde hoy, 10:00 AM) para las citas.",
+              "const future = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);",
+              "future.setHours(10, 0, 0, 0);",
+              "const pad = n => String(n).padStart(2, '0');",
+              "const slot = `${future.getFullYear()}-${pad(future.getMonth()+1)}-${pad(future.getDate())} ${pad(future.getHours())}:${pad(future.getMinutes())}:${pad(future.getSeconds())}`;",
+              "pm.collectionVariables.set('futureSlot', slot);",
+              "const patientId = pm.collectionVariables.get('patientId');",
+              "const baseUrl = pm.collectionVariables.get('baseUrl');",
+              "const token = pm.collectionVariables.get('token');",
+              "const fallbackPatientId = '1';",
+              "const setFallback = () => {",
+              "    pm.collectionVariables.set('patientId', fallbackPatientId);",
+              "    console.warn('[Fallback] patientId inválido o inexistente. Se usará el paciente semilla con ID 1.');",
+              "};",
+              "if (!patientId || patientId === '' || !/^\\d+$/.test(patientId)) {",
+              "    setFallback();",
+              "} else if (baseUrl && token) {",
+              "    pm.sendRequest({",
+              "        url: `${baseUrl}/api/v1/patients/${patientId}`,",
+              "        method: 'GET',",
+              "        header: [",
+              "            { key: 'Authorization', value: 'Bearer ' + token },",
+              "            { key: 'Content-Type', value: 'application/json' }",
+              "        ],",
+              "    }, (err, res) => {",
+              "        if (err || !res || res.code === 404) {",
+              "            setFallback();",
+              "        }",
+              "    });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "item": [
+
+        {
+          "name": "Listar citas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estructura correcta', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    pm.expect(json.data).to.be.an('array');",
+                  "    pm.expect(json.meta.pagination).to.have.all.keys('total','per_page','current_page','last_page');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments?page=1", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments"], "query": [{ "key": "page", "value": "1" }] }
+          }
+        },
+
+        {
+          "name": "Listar citas – Filtrar por estado (pending)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Todos los resultados son pending', () => {",
+                  "    pm.response.json().data.forEach(a => pm.expect(a.status).to.eql('pending'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments?status=pending",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","appointments"],
+              "query": [{ "key": "status", "value": "pending" }]
+            }
+          }
+        },
+
+        {
+          "name": "Listar citas – Filtrar por área",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Todos son de medicina general', () => {",
+                  "    pm.response.json().data.forEach(a => pm.expect(a.attention_area).to.eql('general_medicine'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments?attention_area=general_medicine",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","appointments"],
+              "query": [{ "key": "attention_area", "value": "general_medicine" }]
+            }
+          }
+        },
+
+        {
+          "name": "Listar citas – Filtrar por patient_id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const pid = parseInt(pm.collectionVariables.get('patientId'));",
+                  "pm.test('Todas pertenecen al paciente filtrado', () => {",
+                  "    pm.response.json().data.forEach(a => pm.expect(a.patient_id).to.eql(pid));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments?patient_id={{patientId}}",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","appointments"],
+              "query": [{ "key": "patient_id", "value": "{{patientId}}" }]
+            }
+          }
+        },
+
+        {
+          "name": "Crear cita – Éxito (guarda appointmentId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Estado inicial = pending', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    pm.expect(json.data.status).to.eql('pending');",
+                  "    pm.collectionVariables.set('appointmentId', json.data.id);",
+                  "    console.log('appointmentId guardado:', json.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"patient_id\": {{patientId}},\n    \"attention_area\": \"general_medicine\",\n    \"reason\": \"Dolor de cabeza persistente.\",\n    \"appointment_datetime\": \"{{futureSlot}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments"] },
+            "description": "La fecha se calcula automáticamente (90 días en el futuro) en el pre-request del folder."
+          }
+        },
+
+        {
+          "name": "Crear cita – Campos faltantes (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Errores en campos requeridos', () => {",
+                  "    const errors = pm.response.json().errors;",
+                  "    pm.expect(errors).to.have.property('patient_id');",
+                  "    pm.expect(errors).to.have.property('attention_area');",
+                  "    pm.expect(errors).to.have.property('appointment_datetime');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments"] }
+          }
+        },
+
+        {
+          "name": "Crear cita – Fecha pasada (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error en appointment_datetime', () => pm.expect(pm.response.json().errors).to.have.property('appointment_datetime'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"patient_id\": {{patientId}},\n    \"attention_area\": \"general_medicine\",\n    \"appointment_datetime\": \"2020-01-01 10:00:00\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments"] }
+          }
+        },
+
+        {
+          "name": "Crear cita – Área inválida (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error en attention_area', () => pm.expect(pm.response.json().errors).to.have.property('attention_area'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"patient_id\": {{patientId}},\n    \"attention_area\": \"magia_negra\",\n    \"appointment_datetime\": \"{{futureSlot}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments"] }
+          }
+        },
+
+        {
+          "name": "Ver cita",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Incluye relaciones patient y companion', () => {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d).to.have.property('patient');",
+                  "    pm.expect(d).to.have.property('companion');",
+                  "    pm.expect(d).to.have.property('accepted_by');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments","{{appointmentId}}"] }
+          }
+        },
+
+        {
+          "name": "Ver cita – No encontrada (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments/99999", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments","99999"] }
+          }
+        },
+
+        {
+          "name": "Actualizar cita",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Razón actualizada', () => {",
+                  "    pm.expect(pm.response.json().status).to.eql('success');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"reason\": \"Motivo actualizado: dolor de cabeza y mareos.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments","{{appointmentId}}"] }
+          }
+        },
+
+        {
+          "name": "Cambiar estado – Aprobar (pending → approved)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estado = approved', () => {",
+                  "    pm.expect(pm.response.json().data.status).to.eql('approved');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"approved\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}/change-status", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments","{{appointmentId}}","change-status"] }
+          }
+        },
+
+        {
+          "name": "Cambiar estado – Rechazar (pending → rejected, requiere razón)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estado = rejected', () => pm.expect(pm.response.json().data.status).to.eql('rejected'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"rejected\",\n    \"reason\": \"No hay disponibilidad para esa fecha y hora en el área solicitada.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}/change-status", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments","{{appointmentId}}","change-status"] },
+            "description": "IMPORTANTE: La cita debe estar en estado 'pending'. Ejecuta 'Crear cita' primero si ya la aprobaste."
+          }
+        },
+
+        {
+          "name": "Cambiar estado – Cancelar (approved → canceled, requiere razón)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estado = canceled', () => pm.expect(pm.response.json().data.status).to.eql('canceled'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"canceled\",\n    \"reason\": \"El paciente solicitó cancelar la cita con anticipación.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}/change-status", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments","{{appointmentId}}","change-status"] },
+            "description": "La cita debe estar en estado 'approved' o 'confirmed'."
+          }
+        },
+
+        {
+          "name": "Cambiar estado – Sin razón en rechazo (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"rejected\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments/{{appointmentId}}/change-status", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments","{{appointmentId}}","change-status"] }
+          }
+        },
+
+        {
+          "name": "Cambiar estado – No encontrada (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"status\": \"approved\" }" },
+            "url": { "raw": "{{baseUrl}}/api/v1/appointments/99999/change-status", "host": ["{{baseUrl}}"], "path": ["api","v1","appointments","99999","change-status"] }
+          }
+        },
+
+        {
+          "name": "Calendario de citas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Retorna array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments/calendar?from=2026-06-01&to=2026-12-31",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","appointments","calendar"],
+              "query": [{ "key": "from", "value": "2026-06-01" }, { "key": "to", "value": "2026-12-31" }]
+            }
+          }
+        },
+
+        {
+          "name": "Logs de citas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Retorna array de logs', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/logs/appointments", "host": ["{{baseUrl}}"], "path": ["api","v1","logs","appointments"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "👥 Usuarios",
+      "item": [
+
+        {
+          "name": "Listar usuarios",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estructura con paginación', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    pm.expect(json.data).to.be.an('array');",
+                  "    pm.expect(json.meta.pagination).to.have.all.keys('total','per_page','current_page','last_page');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/users?per_page=10", "host": ["{{baseUrl}}"], "path": ["api","v1","users"], "query": [{ "key": "per_page", "value": "10" }] }
+          }
+        },
+
+        {
+          "name": "Listar usuarios – Filtrar por estado (active)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Todos son activos', () => {",
+                  "    pm.response.json().data.forEach(u => pm.expect(u.status.toLowerCase()).to.eql('active'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users?status=active",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","users"],
+              "query": [{ "key": "status", "value": "active" }]
+            }
+          }
+        },
+
+        {
+          "name": "Listar usuarios – Sin autenticación (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/users", "host": ["{{baseUrl}}"], "path": ["api","v1","users"] }
+          }
+        },
+
+        {
+          "name": "Crear usuario (admin) – Éxito (guarda userId)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const r = Math.random().toString(36).substring(2, 8);",
+                  "pm.collectionVariables.set('newUserEmail', 'user_' + r + '@ucr.ac.cr');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Usuario creado y guarda ID', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    pm.expect(json.data).to.have.property('id');",
+                  "    pm.collectionVariables.set('userId', json.data.id);",
+                  "    pm.collectionVariables.set('targetUserEmail', json.data.email);",
+                  "    console.log('userId guardado:', json.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"María González\",\n    \"identifier\": \"1-2345-0099\",\n    \"email\": \"{{newUserEmail}}\",\n    \"password\": \"Secret123!\",\n    \"status\": \"active\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/users", "host": ["{{baseUrl}}"], "path": ["api","v1","users"] }
+          }
+        },
+
+        {
+          "name": "Crear usuario – Campos faltantes (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Errores en campos requeridos', () => {",
+                  "    const errors = pm.response.json().errors;",
+                  "    pm.expect(errors).to.have.property('name');",
+                  "    pm.expect(errors).to.have.property('email');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/users", "host": ["{{baseUrl}}"], "path": ["api","v1","users"] }
+          }
+        },
+
+        {
+          "name": "Crear usuario – Email duplicado (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error en email', () => pm.expect(pm.response.json().errors).to.have.property('email'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Duplicado Test\",\n    \"identifier\": \"9-0000-0001\",\n    \"email\": \"{{adminEmail}}\",\n    \"password\": \"Secret123!\",\n    \"status\": \"active\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/users", "host": ["{{baseUrl}}"], "path": ["api","v1","users"] },
+            "description": "Usa el mismo email del admin para provocar el error de duplicado."
+          }
+        },
+
+        {
+          "name": "Ver usuario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Contiene datos del usuario', () => {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d).to.have.property('id');",
+                  "    pm.expect(d).to.have.property('name');",
+                  "    pm.expect(d).to.have.property('email');",
+                  "    pm.expect(d).to.not.have.property('password');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}"] }
+          }
+        },
+
+        {
+          "name": "Desactivar usuario (INACTIVE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = success', () => pm.expect(pm.response.json().status).to.eql('success'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"inactive\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}/status", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}","status"] }
+          }
+        },
+
+        {
+          "name": "Activar usuario (ACTIVE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = success', () => pm.expect(pm.response.json().status).to.eql('success'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"active\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}/status", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}","status"] }
+          }
+        },
+
+        {
+          "name": "Cambiar estado – Propio usuario último admin (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Un admin no puede desactivarse a sí mismo cuando es el último administrador activo.",
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n    \"status\": \"inactive\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/users/1/status", "host": ["{{baseUrl}}"], "path": ["api","v1","users","1","status"] },
+            "description": "Reemplaza el '1' con el ID del usuario autenticado si es diferente."
+          }
+        },
+
+        {
+          "name": "Cambiar estado – Estado inválido (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error en status', () => pm.expect(pm.response.json().errors).to.have.property('status'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n    \"status\": \"desconocido\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}/status", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}","status"] }
+          }
+        },
+
+        {
+          "name": "Asignar rol a usuario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 ó 201', () => pm.expect([200,201]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"role\": \"doctor\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}/roles", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}","roles"] }
+          }
+        },
+
+        {
+          "name": "Revocar rol de usuario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200, 204 ó 409', () => pm.expect([200,204,409]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}/roles/doctor", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}","roles","doctor"] }
+          }
+        },
+
+        {
+          "name": "Logs de usuarios",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Retorna array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/logs/users", "host": ["{{baseUrl}}"], "path": ["api","v1","logs","users"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "🎭 Roles",
+      "item": [
+
+        {
+          "name": "Listar roles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Retorna array de roles', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/roles", "host": ["{{baseUrl}}"], "path": ["api","v1","roles"] }
+          }
+        },
+
+        {
+          "name": "Crear rol – Éxito (guarda roleId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Guarda roleId', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    if (json.data && json.data.id) pm.collectionVariables.set('roleId', json.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"supervisor\",\n    \"permissions\": [1]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/roles", "host": ["{{baseUrl}}"], "path": ["api","v1","roles"] }
+          }
+        },
+
+        {
+          "name": "Crear rol – Sin nombre (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error en name', () => pm.expect(pm.response.json().errors).to.have.property('name'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/roles", "host": ["{{baseUrl}}"], "path": ["api","v1","roles"] }
+          }
+        },
+
+        {
+          "name": "Actualizar rol",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"supervisor\",\n    \"permissions\": [1]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/roles/{{roleId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","roles","{{roleId}}"] }
+          }
+        },
+
+        {
+          "name": "Eliminar rol",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 ó 204', () => pm.expect([200,204]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/roles/{{roleId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","roles","{{roleId}}"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "🔑 Permisos",
+      "item": [
+        {
+          "name": "Listar permisos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Retorna catálogo de permisos', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    pm.expect(json.data).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/permissions", "host": ["{{baseUrl}}"], "path": ["api","v1","permissions"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🧑 Acompañantes",
+      "item": [
+
+        {
+          "name": "Listar acompañantes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estructura con paginación', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    pm.expect(json.data).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/companions?per_page=10", "host": ["{{baseUrl}}"], "path": ["api","v1","companions"], "query": [{ "key": "per_page", "value": "10" }] }
+          }
+        },
+
+        {
+          "name": "Crear acompañante – Éxito (guarda companionId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Guarda companionId', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    pm.collectionVariables.set('companionId', json.data.id);",
+                  "    console.log('companionId guardado:', json.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"full_name\": \"Ana López García\",\n    \"identifier\": \"1-9876-5432\",\n    \"phone\": \"7777-8888\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/companions", "host": ["{{baseUrl}}"], "path": ["api","v1","companions"] },
+            "description": "Campos requeridos: full_name, identifier (formato X-XXXX-XXXX), phone (formato XXXX-XXXX)."
+          }
+        },
+
+        {
+          "name": "Crear acompañante – Campos faltantes (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Errores en campos requeridos', () => {",
+                  "    const errors = pm.response.json().errors;",
+                  "    pm.expect(errors).to.have.property('full_name');",
+                  "    pm.expect(errors).to.have.property('identifier');",
+                  "    pm.expect(errors).to.have.property('phone');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/companions", "host": ["{{baseUrl}}"], "path": ["api","v1","companions"] }
+          }
+        },
+
+        {
+          "name": "Ver acompañante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Retorna datos del acompañante', () => pm.expect(pm.response.json().data).to.have.property('id'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/companions/{{companionId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","companions","{{companionId}}"] }
+          }
+        },
+
+        {
+          "name": "Ver acompañante – No encontrado (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/companions/99999", "host": ["{{baseUrl}}"], "path": ["api","v1","companions","99999"] }
+          }
+        },
+
+        {
+          "name": "Actualizar acompañante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"full_name\": \"Ana López García (actualizado)\",\n    \"identifier\": \"1-9876-5432\",\n    \"phone\": \"6666-5555\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/companions/{{companionId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","companions","{{companionId}}"] }
+          }
+        },
+
+        {
+          "name": "Eliminar acompañante (204)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/companions/{{companionId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","companions","{{companionId}}"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "📊 Estadísticas",
+      "item": [
+
+        {
+          "name": "Total de pacientes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Contiene total', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('success');",
+                  "    pm.expect(json.data).to.have.property('total');",
+                  "    pm.expect(json.data.total).to.be.a('number');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/stats/patients/total", "host": ["{{baseUrl}}"], "path": ["api","v1","stats","patients","total"] }
+          }
+        },
+
+        {
+          "name": "Total de pacientes – Filtrar por rango de fechas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Contiene total filtrado', () => pm.expect(pm.response.json().data).to.have.property('total'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/stats/patients/total?from=2026-01-01&to=2026-12-31",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","stats","patients","total"],
+              "query": [{ "key": "from", "value": "2026-01-01" }, { "key": "to", "value": "2026-12-31" }]
+            }
+          }
+        },
+
+        {
+          "name": "Total de pacientes – Fecha inválida (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error en campo from', () => pm.expect(pm.response.json().errors).to.have.property('from'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/stats/patients/total?from=no-es-fecha",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","stats","patients","total"],
+              "query": [{ "key": "from", "value": "no-es-fecha" }]
+            }
+          }
+        },
+
+        {
+          "name": "Total de pacientes – Fecha fin antes del inicio (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Error en campo to', () => pm.expect(pm.response.json().errors).to.have.property('to'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/stats/patients/total?from=2026-06-01&to=2026-01-01",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","stats","patients","total"],
+              "query": [{ "key": "from", "value": "2026-06-01" }, { "key": "to", "value": "2026-01-01" }]
+            }
+          }
+        },
+
+        {
+          "name": "Menores de edad",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Contiene total de menores', () => pm.expect(pm.response.json().data).to.be.an('object'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/stats/patients/minors", "host": ["{{baseUrl}}"], "path": ["api","v1","stats","patients","minors"] }
+          }
+        },
+
+        {
+          "name": "Pacientes por tipo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Retorna array agrupado', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/stats/patients/by-type", "host": ["{{baseUrl}}"], "path": ["api","v1","stats","patients","by-type"] }
+          }
+        },
+
+        {
+          "name": "Pacientes por período",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/stats/patients/by-period?date_from=2026-01-01&date_to=2026-12-31",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","stats","patients","by-period"],
+              "query": [{ "key": "date_from", "value": "2026-01-01" }, { "key": "date_to", "value": "2026-12-31" }]
+            }
+          }
+        },
+
+        {
+          "name": "Citas por estado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estructura con status, count y percentage', () => {",
+                  "    const data = pm.response.json().data;",
+                  "    if (data.length > 0) {",
+                  "        pm.expect(data[0]).to.have.all.keys('status','count','percentage');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/stats/appointments/by-status", "host": ["{{baseUrl}}"], "path": ["api","v1","stats","appointments","by-status"] }
+          }
+        },
+
+        {
+          "name": "Citas por área",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Retorna array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/stats/appointments/by-area", "host": ["{{baseUrl}}"], "path": ["api","v1","stats","appointments","by-area"] }
+          }
+        },
+
+        {
+          "name": "Citas por período",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/stats/appointments/by-period?date_from=2026-01-01&date_to=2026-12-31",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","stats","appointments","by-period"],
+              "query": [{ "key": "date_from", "value": "2026-01-01" }, { "key": "date_to", "value": "2026-12-31" }]
+            }
+          }
+        },
+
+        {
+          "name": "Cancelaciones de citas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/v1/stats/appointments/cancellations", "host": ["{{baseUrl}}"], "path": ["api","v1","stats","appointments","cancellations"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "📧 Auth - Extras",
+      "item": [
+        {
+          "name": "Verificar email (GET con token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status success', () => pm.expect(pm.response.json().status).to.eql('success'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/verify-email?token={{verifyEmailToken}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","auth","verify-email"],
+              "query": [{ "key": "token", "value": "{{verifyEmailToken}}" }]
+            }
+          }
+        },
+        {
+          "name": "Verificar email - token inválido (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('status error', () => pm.expect(pm.response.json().status).to.eql('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/verify-email?token=token_invalido_tampered",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","auth","verify-email"],
+              "query": [{ "key": "token", "value": "token_invalido_tampered" }]
+            }
+          }
+        },
+        {
+          "name": "Verificar email - sin token (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/verify-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","auth","verify-email"]
+            }
+          }
+        },
+        {
+          "name": "Has Permission - tiene permiso",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('retorna permission y granted', () => {",
+                  "  pm.expect(json.data).to.have.property('permission');",
+                  "  pm.expect(json.data).to.have.property('granted');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/has-permission?permission=appointments.read",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","auth","has-permission"],
+              "query": [{ "key": "permission", "value": "appointments.read" }]
+            }
+          }
+        },
+        {
+          "name": "Has Permission - sin parámetro (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/has-permission",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","auth","has-permission"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🔔 Notificaciones",
+      "item": [
+        {
+          "name": "Listar notificaciones (paginadas)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('status success', () => pm.expect(json.status).to.eql('success'));",
+                  "pm.test('data es array', () => pm.expect(json.data).to.be.an('array'));",
+                  "pm.test('tiene meta.pagination', () => pm.expect(json.meta).to.have.property('pagination'));",
+                  "// Guardar id si existe para tests siguientes",
+                  "if (json.data && json.data.length > 0) {",
+                  "  pm.collectionVariables.set('notificationId', json.data[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","notifications"]
+            }
+          }
+        },
+        {
+          "name": "Listar - con per_page",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('per_page respetado (máx 100)', () => {",
+                  "  pm.expect(json.meta.pagination.per_page).to.be.at.most(100);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications?per_page=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","notifications"],
+              "query": [{ "key": "per_page", "value": "50" }]
+            }
+          }
+        },
+        {
+          "name": "Contador no leídas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('retorna data.count numérico', () => {",
+                  "  pm.expect(json.data).to.have.property('count');",
+                  "  pm.expect(json.data.count).to.be.a('number');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications/unread-count",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","notifications","unread-count"]
+            }
+          }
+        },
+        {
+          "name": "Marcar como leída (PATCH /{id}/read)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status success', () => pm.expect(pm.response.json().status).to.eql('success'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications/{{notificationId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","notifications","{{notificationId}}","read"]
+            }
+          }
+        },
+        {
+          "name": "Marcar como leída - idempotente (200 en segunda llamada)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 (idempotente)', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications/{{notificationId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","notifications","{{notificationId}}","read"]
+            }
+          }
+        },
+        {
+          "name": "Marcar como leída - ID letra (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400 para ID alfabético', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications/abc/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","notifications","abc","read"]
+            }
+          }
+        },
+        {
+          "name": "Marcar como leída - ID negativo (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400 para ID negativo', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications/-1/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","notifications","-1","read"]
+            }
+          }
+        },
+        {
+          "name": "Marcar como no leída (PATCH /{id}/unread)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status success', () => pm.expect(pm.response.json().status).to.eql('success'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications/{{notificationId}}/unread",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","notifications","{{notificationId}}","unread"]
+            }
+          }
+        },
+        {
+          "name": "Marcar todas como leídas (PATCH /read-all)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('retorna data.updated numérico', () => {",
+                  "  pm.expect(json.data).to.have.property('updated');",
+                  "  pm.expect(json.data.updated).to.be.a('number');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications/read-all",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","notifications","read-all"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar notificación",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications/{{notificationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","notifications","{{notificationId}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar - ID inválido (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400 para ID inválido', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications/abc",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","notifications","abc"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar - sin autenticación (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/notifications/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","notifications","1"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🏥 Disponibilidad Institucional",
+      "item": [
+        {
+          "name": "Listar slots de disponibilidad",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('data es array', () => pm.expect(json.data).to.be.an('array'));",
+                  "if (json.data && json.data.length > 0) {",
+                  "  pm.collectionVariables.set('availabilityId', json.data[0].id);",
+                  "  pm.test('estructura: day_of_week, start_time, end_time, enabled', () => {",
+                  "    const s = json.data[0];",
+                  "    pm.expect(s).to.have.all.keys('id','day_of_week','start_time','end_time','enabled');",
+                  "  });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-availability",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-availability"]
+            }
+          }
+        },
+        {
+          "name": "Listar - filtro enabled=true",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('todos enabled=true', () => {",
+                  "  json.data.forEach(s => pm.expect(s.enabled).to.be.true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-availability?enabled=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-availability"],
+              "query": [{ "key": "enabled", "value": "true" }]
+            }
+          }
+        },
+        {
+          "name": "Crear slot de disponibilidad (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('status success', () => pm.expect(json.status).to.eql('success'));",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('availabilityId', json.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"day_of_week\": \"monday\",\n  \"start_time\": \"08:00\",\n  \"end_time\": \"17:00\",\n  \"enabled\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-availability",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-availability"]
+            }
+          }
+        },
+        {
+          "name": "Crear slot - día inválido (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "const json = pm.response.json();",
+                  "pm.test('error en day_of_week', () => pm.expect(json.errors).to.have.property('day_of_week'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"day_of_week\": \"lunes\",\n  \"start_time\": \"08:00\",\n  \"end_time\": \"17:00\",\n  \"enabled\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-availability",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-availability"]
+            }
+          }
+        },
+        {
+          "name": "Crear slot - fin antes de inicio (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 fin < inicio', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"day_of_week\": \"tuesday\",\n  \"start_time\": \"17:00\",\n  \"end_time\": \"08:00\",\n  \"enabled\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-availability",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-availability"]
+            }
+          }
+        },
+        {
+          "name": "Crear slot - solapamiento (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 solapamiento', () => pm.response.to.have.status(422));",
+                  "const json = pm.response.json();",
+                  "pm.test('error en start_time (campo de solapamiento)', () => pm.expect(json.errors).to.have.property('start_time'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"day_of_week\": \"monday\",\n  \"start_time\": \"09:00\",\n  \"end_time\": \"12:00\",\n  \"enabled\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-availability",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-availability"]
+            }
+          }
+        },
+        {
+          "name": "Ver slot por ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status success', () => pm.expect(pm.response.json().status).to.eql('success'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-availability/{{availabilityId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-availability","{{availabilityId}}"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar slot",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status success', () => pm.expect(pm.response.json().status).to.eql('success'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"day_of_week\": \"monday\",\n  \"start_time\": \"07:00\",\n  \"end_time\": \"16:00\",\n  \"enabled\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-availability/{{availabilityId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-availability","{{availabilityId}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar slot",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-availability/{{availabilityId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-availability","{{availabilityId}}"]
+            }
+          }
+        },
+        {
+          "name": "Listar logs de disponibilidad",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data es array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-logs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-logs"]
+            }
+          }
+        },
+        {
+          "name": "Sin autenticación (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401 sin token', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-availability",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-availability"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🚫 Bloqueos Institucionales",
+      "item": [
+        {
+          "name": "Listar bloqueos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data es array', () => pm.expect(pm.response.json().data).to.be.an('array'));",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.length > 0) {",
+                  "  pm.collectionVariables.set('blockId', json.data[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-blocks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-blocks"]
+            }
+          }
+        },
+        {
+          "name": "Crear bloqueo día completo (201)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Fecha futura (+30 días)",
+                  "const d = new Date(); d.setDate(d.getDate() + 30);",
+                  "const pad = n => String(n).padStart(2,'0');",
+                  "const fechaBloqueo = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());",
+                  "pm.collectionVariables.set('blockDate', fechaBloqueo);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('status success', () => pm.expect(json.status).to.eql('success'));",
+                  "pm.test('full_day=true nullifica horas', () => {",
+                  "  pm.expect(json.data.start_time).to.be.null;",
+                  "  pm.expect(json.data.end_time).to.be.null;",
+                  "});",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('blockId', json.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"{{blockDate}}\",\n  \"reason\": \"Día feriado institucional\",\n  \"full_day\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-blocks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-blocks"]
+            }
+          }
+        },
+        {
+          "name": "Crear bloqueo parcial (con horas)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const d = new Date(); d.setDate(d.getDate() + 60);",
+                  "const pad = n => String(n).padStart(2,'0');",
+                  "const fecha = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());",
+                  "pm.collectionVariables.set('blockDate2', fecha);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('tiene start_time y end_time', () => {",
+                  "  pm.expect(json.data.start_time).to.not.be.null;",
+                  "  pm.expect(json.data.end_time).to.not.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"{{blockDate2}}\",\n  \"reason\": \"Mantenimiento\",\n  \"full_day\": false,\n  \"start_time\": \"12:00\",\n  \"end_time\": \"14:00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-blocks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-blocks"]
+            }
+          }
+        },
+        {
+          "name": "Crear bloqueo - fecha pasada (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 fecha pasada', () => pm.response.to.have.status(422));",
+                  "pm.test('error en date', () => pm.expect(pm.response.json().errors).to.have.property('date'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"2020-01-01\",\n  \"reason\": \"Test fecha pasada\",\n  \"full_day\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-blocks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-blocks"]
+            }
+          }
+        },
+        {
+          "name": "Crear bloqueo - fecha duplicada (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 duplicado', () => pm.response.to.have.status(422));",
+                  "pm.test('error en date', () => pm.expect(pm.response.json().errors).to.have.property('date'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"{{blockDate}}\",\n  \"reason\": \"Duplicado\",\n  \"full_day\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-blocks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-blocks"]
+            }
+          }
+        },
+        {
+          "name": "Ver bloqueo por ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status success', () => pm.expect(pm.response.json().status).to.eql('success'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-blocks/{{blockId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-blocks","{{blockId}}"]
+            }
+          }
+        },
+        {
+          "name": "Ver bloqueo - inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-blocks/99999",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-blocks","99999"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar bloqueo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status success', () => pm.expect(pm.response.json().status).to.eql('success'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"{{blockDate}}\",\n  \"reason\": \"Razón actualizada\",\n  \"full_day\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-blocks/{{blockId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-blocks","{{blockId}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar bloqueo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-blocks/{{blockId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-blocks","{{blockId}}"]
+            }
+          }
+        },
+        {
+          "name": "Sin autenticación (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401 sin token', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institution-blocks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","institution-blocks"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🎟️ Citas de Invitado",
+      "item": [
+        {
+          "name": "Iniciar flujo invitado (POST /guest-appointments/start)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('status success', () => pm.expect(json.status).to.eql('success'));",
+                  "pm.test('retorna email en data', () => pm.expect(json.data).to.have.property('email'));",
+                  "pm.test('retorna verification_token', () => pm.expect(json.data).to.have.property('verification_token'));",
+                  "if (json.data && json.data.verification_token) {",
+                  "  pm.collectionVariables.set('guestVerificationToken', json.data.verification_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"invitado.test@ucr.ac.cr\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/guest-appointments/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","guest-appointments","start"]
+            }
+          }
+        },
+        {
+          "name": "Iniciar flujo - email no institucional (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 email no ucr', () => pm.response.to.have.status(422));",
+                  "pm.test('error en email', () => pm.expect(pm.response.json().errors).to.have.property('email'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"invitado@gmail.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/guest-appointments/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","guest-appointments","start"]
+            }
+          }
+        },
+        {
+          "name": "Iniciar flujo - email formato inválido (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 email inválido', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"no-es-un-email\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/guest-appointments/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","guest-appointments","start"]
+            }
+          }
+        },
+        {
+          "name": "Crear cita como invitado (POST /guest-appointments)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const d = new Date(); d.setDate(d.getDate() + 90);",
+                  "const pad = n => String(n).padStart(2,'0');",
+                  "const slot = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' 10:00:00';",
+                  "pm.collectionVariables.set('guestSlot', slot);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('status success', () => pm.expect(json.status).to.eql('success'));",
+                  "pm.test('data contiene id de cita', () => pm.expect(json.data).to.have.property('id'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verification_token\": \"{{guestVerificationToken}}\",\n  \"full_name\": \"Test Invitado UCR\",\n  \"identifier\": \"1-2345-6789\",\n  \"birth_date\": \"1990-06-15\",\n  \"user_type\": \"Visitante\",\n  \"phone\": \"8800-1234\",\n  \"attention_area\": \"general_medicine\",\n  \"appointment_datetime\": \"{{guestSlot}}\",\n  \"reason\": \"Consulta general como invitado\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/guest-appointments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","guest-appointments"]
+            }
+          }
+        },
+        {
+          "name": "Crear cita invitado - token inválido (422)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const d = new Date(); d.setDate(d.getDate() + 91);",
+                  "const pad = n => String(n).padStart(2,'0');",
+                  "pm.collectionVariables.set('guestSlot2', d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' 11:00:00');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 token inválido', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verification_token\": \"tokeninvalido00000000000000000000\",\n  \"full_name\": \"Invitado Sin Token\",\n  \"identifier\": \"1-9999-9999\",\n  \"birth_date\": \"1995-03-20\",\n  \"user_type\": \"Visitante\",\n  \"phone\": \"8811-2233\",\n  \"attention_area\": \"general_medicine\",\n  \"appointment_datetime\": \"{{guestSlot2}}\",\n  \"reason\": \"Prueba con token inválido\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/guest-appointments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","guest-appointments"]
+            }
+          }
+        },
+        {
+          "name": "Crear cita invitado - campos faltantes (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 campos faltantes', () => pm.response.to.have.status(422));",
+                  "pm.test('errors presentes', () => pm.expect(pm.response.json().errors).to.be.an('object'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"attention_area\": \"general_medicine\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/guest-appointments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","guest-appointments"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "👤 Usuarios - Registro y Actualización",
+      "item": [
+        {
+          "name": "Registrar usuario (público) - 201",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const ts = Date.now();",
+                  "pm.collectionVariables.set('registerEmail', 'nuevo_' + ts + '@ucr.ac.cr');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('status success', () => pm.expect(json.status).to.eql('success'));",
+                  "pm.test('usuario inicia INACTIVE', () => pm.expect(json.data.status).to.eql('inactive'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Usuario Nuevo Test\",\n  \"identifier\": \"1-2345-6789\",\n  \"email\": \"{{registerEmail}}\",\n  \"password\": \"Password1!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","register"]
+            }
+          }
+        },
+        {
+          "name": "Registrar - contraseña débil (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 contraseña débil', () => pm.response.to.have.status(422));",
+                  "pm.test('error en password', () => pm.expect(pm.response.json().errors).to.have.property('password'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test\",\n  \"identifier\": \"1-2345-0001\",\n  \"email\": \"otro@ucr.ac.cr\",\n  \"password\": \"password\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","register"]
+            }
+          }
+        },
+        {
+          "name": "Registrar - email duplicado (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 email duplicado', () => pm.response.to.have.status(422));",
+                  "pm.test('error en email', () => pm.expect(pm.response.json().errors).to.have.property('email'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Duplicado\",\n  \"identifier\": \"1-9999-0002\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"Password1!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","register"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar usuario (PUT /{id}) - nombre",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('status success', () => pm.expect(json.status).to.eql('success'));",
+                  "pm.test('nombre actualizado', () => pm.expect(json.data.name).to.eql('Nombre Actualizado Test'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nombre Actualizado Test\",\n  \"email\": \"{{targetUserEmail}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar usuario - propio usuario (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 auto-edición', () => pm.response.to.have.status(403));",
+                  "pm.test('status error', () => pm.expect(pm.response.json().status).to.eql('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Intento propio\",\n  \"email\": \"{{adminEmail}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{adminSelfId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{adminSelfId}}"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar usuario - email inválido (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error en email', () => pm.expect(pm.response.json().errors).to.have.property('email'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test\",\n  \"email\": \"no-es-email\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar usuario - inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Fantasma\",\n  \"email\": \"ghost@ucr.ac.cr\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/99999",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","99999"]
+            }
+          }
+        },
+        {
+          "name": "Ver usuario por ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('incluye roles y permissions', () => {",
+                  "  pm.expect(json.data).to.have.property('roles');",
+                  "  pm.expect(json.data).to.have.property('permissions');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Ver usuario - inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/99999",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","99999"]
+            }
+          }
+        },
+        {
+          "name": "Logs de usuarios",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data es array', () => pm.expect(pm.response.json().data).to.be.an('array'));",
+                  "pm.test('tiene meta.pagination', () => pm.expect(pm.response.json().meta).to.have.property('pagination'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/logs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","logs"]
+            }
+          }
+        },
+        {
+          "name": "Logs de usuarios - filtro por acción",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/logs?action=Create",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","logs"],
+              "query": [{ "key": "action", "value": "Create" }]
+            }
+          }
+        },
+        {
+          "name": "Stats usuarios - por estado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data es array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/stats/users/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","stats","users","status"]
+            }
+          }
+        },
+        {
+          "name": "Stats usuarios - por rol",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data es array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/stats/users/by-role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","stats","users","by-role"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🔒 Roles - Seguridad y Restricciones",
+      "item": [
+        {
+          "name": "Editar propio rol → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 (self-modification)', () => pm.response.to.have.status(403));",
+                  "pm.test('status error', () => pm.expect(pm.response.json().status).to.eql('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"admin_modificado\",\n  \"permissions\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/roles/{{adminOwnRoleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","roles","{{adminOwnRoleId}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar propio rol → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 (self-role delete)', () => pm.response.to.have.status(403));",
+                  "pm.test('status error', () => pm.expect(pm.response.json().status).to.eql('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/roles/{{adminOwnRoleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","roles","{{adminOwnRoleId}}"]
+            }
+          }
+        },
+        {
+          "name": "Revocar rol propio de sí mismo → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 auto-revocación', () => pm.response.to.have.status(403));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{adminSelfId}}/roles/{{adminOwnRoleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{adminSelfId}}","roles","{{adminOwnRoleId}}"]
+            }
+          }
+        },
+        {
+          "name": "Asignar rol propio a sí mismo → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 auto-asignación', () => pm.response.to.have.status(403));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{adminSelfId}}/roles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{adminSelfId}}","roles"]
+            }
+          }
+        },
+        {
+          "name": "Revocar último rol de usuario → 409",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('roleId', 3);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409 último rol', () => pm.response.to.have.status(409));",
+                  "pm.test('status error', () => pm.expect(pm.response.json().status).to.eql('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/roles/{{roleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{userId}}","roles","{{roleId}}"]
+            }
+          }
+        },
+        {
+          "name": "Desactivar último admin → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409 último admin', () => pm.response.to.have.status(409));",
+                  "pm.test('status error', () => pm.expect(pm.response.json().status).to.eql('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"inactive\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{lastAdminId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{lastAdminId}}","status"]
+            }
+          }
+        },
+        {
+          "name": "Listar roles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data es array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/roles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","roles"]
+            }
+          }
+        },
+        {
+          "name": "Crear rol con permisos (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('status success', () => pm.expect(json.status).to.eql('success'));",
+                  "pm.test('rol tiene permissions', () => pm.expect(json.data).to.have.property('permissions'));",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('createdRoleId', json.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"coordinador_test\",\n  \"permissions\": [\"appointments.read\", \"patients.read\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/roles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","roles"]
+            }
+          }
+        },
+        {
+          "name": "Crear rol - sin permisos (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 sin permisos', () => pm.response.to.have.status(422));",
+                  "pm.test('error en permissions', () => pm.expect(pm.response.json().errors).to.have.property('permissions'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"rol_vacio\",\n  \"permissions\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/roles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","roles"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar rol - nombre y permisos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status success', () => pm.expect(pm.response.json().status).to.eql('success'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"coordinador_actualizado\",\n  \"permissions\": [\"appointments.read\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/roles/{{createdRoleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","roles","{{createdRoleId}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar rol creado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/roles/{{createdRoleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","roles","{{createdRoleId}}"]
+            }
+          }
+        },
+        {
+          "name": "Logs de roles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data es array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/roles/logs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","roles","logs"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🛡️ Seguridad - Autorización",
+      "item": [
+        {
+          "name": "Escalada de privilegios - asignar super-admin sin permiso (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Un usuario con solo 'users.update' NO debe poder asignar super-admin",
+                  "pm.test('Status 403 (escalada bloqueada)', () => pm.response.to.have.status(403));",
+                  "pm.test('status error', () => pm.expect(pm.response.json().status).to.eql('error'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"super-admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/roles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{userId}}","roles"]
+            }
+          }
+        },
+        {
+          "name": "Asignar permiso que el actor no posee (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Actor sin 'users.delete' no debe poder otorgar ese permiso a otro",
+                  "pm.test('Status 403 (delegación bloqueada)', () => pm.response.to.have.status(403));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permission\": \"users.delete\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/permissions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{userId}}","permissions"]
+            }
+          }
+        },
+        {
+          "name": "Mass assignment - campos ignorados en update (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// El endpoint PUT /users/{id} solo debe aceptar name/email",
+                  "// Campos extra (role, is_admin, status) deben ignorarse",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('rol NO cambiado a super-admin', () => {",
+                  "  if (json.data && json.data.roles) {",
+                  "    const roles = json.data.roles.map(r => r.name || r);",
+                  "    pm.expect(roles).to.not.include('super-admin');",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nombre Legítimo\",\n  \"email\": \"{{targetUserEmail}}\",\n  \"role\": \"super-admin\",\n  \"is_admin\": true,\n  \"status\": \"active\",\n  \"permissions\": [\"users.delete\", \"roles.delete\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Asignar permiso - valor null (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 null inyectado', () => pm.response.to.have.status(422));",
+                  "pm.test('error en permission', () => pm.expect(pm.response.json().errors).to.have.property('permission'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permission\": null\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/permissions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{userId}}","permissions"]
+            }
+          }
+        },
+        {
+          "name": "Asignar rol - array en vez de string (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 tipo inválido', () => pm.response.to.have.status(422));",
+                  "pm.test('error en role', () => pm.expect(pm.response.json().errors).to.have.property('role'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": [\"admin\", \"super-admin\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/roles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users","{{userId}}","roles"]
+            }
+          }
+        },
+        {
+          "name": "Endpoint protegido sin token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401 sin autenticación', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users"]
+            }
+          }
+        },
+        {
+          "name": "Token revocado tras logout (401)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Usa el token guardado en 'revokedToken' tras hacer logout",
+                  "// Primero: haz login, guarda token en 'revokedToken', luego logout, luego corre este request"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401 token revocado', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{revokedToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","users"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "📝 Logs de Citas",
+      "item": [
+        {
+          "name": "Listar logs de citas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data es array', () => pm.expect(pm.response.json().data).to.be.an('array'));",
+                  "pm.test('tiene meta.pagination', () => pm.expect(pm.response.json().meta).to.have.property('pagination'));",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.length > 0) {",
+                  "  pm.collectionVariables.set('appointmentLogId', json.data[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments/logs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","appointments","logs"]
+            }
+          }
+        },
+        {
+          "name": "Ver log de cita por ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status success', () => pm.expect(pm.response.json().status).to.eql('success'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments/logs/{{appointmentLogId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","appointments","logs","{{appointmentLogId}}"]
+            }
+          }
+        },
+        {
+          "name": "Ver log de cita - inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments/logs/99999",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","appointments","logs","99999"]
+            }
+          }
+        },
+        {
+          "name": "Listar logs de pacientes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data es array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/patients/logs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","patients","logs"]
+            }
+          }
+        },
+        {
+          "name": "Ver log de paciente por ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 o 404', () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/patients/logs/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","patients","logs","1"]
+            }
+          }
+        },
+        {
+          "name": "Sin autenticación - logs citas (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/appointments/logs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","appointments","logs"]
+            }
+          }
+        }
+      ]
+    }
+
+  ]
+}
