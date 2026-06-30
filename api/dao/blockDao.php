@@ -15,24 +15,32 @@ class BlockDao
     public function index(array $filters = []): array
     {
         $where = $this->buildWhere($filters);
-        $sql   = "SELECT b.*, u.name AS created_by_name FROM institution_blocks b
-                  LEFT JOIN users u ON u.id = b.created_by_id"
+        $sql   = "SELECT b.* FROM institution_blocks b"
                . $where['sql']
                . " ORDER BY b.date ASC";
         $stmt = $this->connection->prepare($sql);
         $stmt->execute($where['params']);
-        return $stmt->fetchAll();
+        return array_map([$this, 'withRelations'], $stmt->fetchAll());
     }
 
     public function findById(int $id): ?array
     {
-        $stmt = $this->connection->prepare(
-            "SELECT b.*, u.name AS created_by_name FROM institution_blocks b
-             LEFT JOIN users u ON u.id = b.created_by_id WHERE b.id = :id"
-        );
+        $stmt = $this->connection->prepare("SELECT b.* FROM institution_blocks b WHERE b.id = :id");
         $stmt->execute([':id' => $id]);
         $row = $stmt->fetch();
-        return $row ?: null;
+        return $row ? $this->withRelations($row) : null;
+    }
+
+    public function withRelations(array $block): array
+    {
+        if (!empty($block['created_by_id'])) {
+            $s = $this->connection->prepare("SELECT id, name FROM users WHERE id = :id");
+            $s->execute([':id' => $block['created_by_id']]);
+            $block['created_by'] = $s->fetch() ?: null;
+        } else {
+            $block['created_by'] = null;
+        }
+        return $block;
     }
 
     public function dateExists(string $fecha, ?int $excluirId = null): bool
