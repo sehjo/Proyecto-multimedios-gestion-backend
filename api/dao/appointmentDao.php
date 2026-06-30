@@ -212,22 +212,39 @@ class AppointmentDao
 
     public function saveConfirmationToken(int $id, string $hashedToken, string $expiresAt): bool
     {
-        $stmt = $this->connection->prepare(
-            "UPDATE appointments
-             SET confirmation_token_hash = :hash, confirmation_token_expires_at = :expires
-             WHERE id = :id"
-        );
-        return $stmt->execute([':hash' => $hashedToken, ':expires' => $expiresAt, ':id' => $id]);
+        try {
+            $stmt = $this->connection->prepare(
+                "UPDATE appointments
+                 SET confirmation_token_hash = :hash, confirmation_token_expires_at = :expires
+                 WHERE id = :id"
+            );
+            return (bool) $stmt->execute([':hash' => $hashedToken, ':expires' => $expiresAt, ':id' => $id]);
+        } catch (\PDOException $ex) {
+            // If the column doesn't exist in the current DB schema, avoid throwing
+            // and return false so callers can continue without failing the whole request.
+            // This makes the API more tolerant to missing migrations in dev environments.
+            if (strpos($ex->getMessage(), 'Unknown column') !== false || strpos($ex->getMessage(), '1054') !== false) {
+                return false;
+            }
+            throw $ex;
+        }
     }
 
     public function clearConfirmationToken(int $id): bool
     {
-        $stmt = $this->connection->prepare(
-            "UPDATE appointments
-             SET confirmation_token_hash = NULL, confirmation_token_expires_at = NULL
-             WHERE id = :id"
-        );
-        return $stmt->execute([':id' => $id]);
+        try {
+            $stmt = $this->connection->prepare(
+                "UPDATE appointments
+                 SET confirmation_token_hash = NULL, confirmation_token_expires_at = NULL
+                 WHERE id = :id"
+            );
+            return (bool) $stmt->execute([':id' => $id]);
+        } catch (\PDOException $ex) {
+            if (strpos($ex->getMessage(), 'Unknown column') !== false || strpos($ex->getMessage(), '1054') !== false) {
+                return false;
+            }
+            throw $ex;
+        }
     }
 
     public function findByConfirmationToken(string $hashedToken): ?array

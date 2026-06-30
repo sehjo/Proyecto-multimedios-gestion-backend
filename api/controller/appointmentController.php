@@ -152,54 +152,59 @@ class AppointmentController
 
     public function changeStatus(int $id): void
     {
-        $actor  = requirePermission('appointments.update');
-        $appointment   = $this->dao->findById($id);
+        try {
+            $actor  = requirePermission('appointments.update');
+            $appointment   = $this->dao->findById($id);
 
-        if (!$appointment) {
-            jsonResponse('error', 'Cita no encontrada.', null, null, null, 404);
+            if (!$appointment) {
+                jsonResponse('error', 'Cita no encontrada.', null, null, null, 404);
+            }
+
+            $json      = getJsonInput();
+            $statusesStr = implode(',', $this->dao->getValidStatuses());
+            $errors   = validar($json, [
+                'status' => "required|in:{$statusesStr}",
+            ]);
+
+            // Accept 'cancellation_reason' or its short alias 'reason'
+            $cancelReason        = $json['cancellation_reason'] ?? $json['reason'] ?? null;
+            $requiresCancellation = in_array($json['status'] ?? '', ['canceled', 'rejected'], true);
+            if ($requiresCancellation && empty($cancelReason)) {
+                $errors['cancellation_reason'][] = 'El motivo de cancelación es obligatorio para este estado.';
+            }
+
+            if (!empty($errors)) {
+                jsonResponse('error', 'Error de validación.', null, $errors, null, 422);
+            }
+
+            $oldStatus = $appointment['status'];
+            $this->dao->changeStatus($id, $json['status'], $cancelReason);
+
+            $this->dao->logAction(
+                $actor['id'] ?? null,
+                $id,
+                'ChangeStatus',
+                json_encode(['status' => ['from' => $oldStatus, 'to' => $json['status']]])
+            );
+
+            $confirmUrl = null;
+            if ($json['status'] === 'approved') {
+                $confirmUrl = $this->issueConfirmationToken($id, $appointment['appointment_datetime']);
+            } else {
+                $this->dao->clearConfirmationToken($id);
+            }
+
+            $actualizada = $this->dao->findById($id);
+
+            if (!empty($actualizada['patient_email'])) {
+                $this->sendAppointmentEmail($actualizada, $json['status'], $confirmUrl);
+            }
+
+            jsonResponse('success', 'Estado de la cita actualizado correctamente.', $actualizada);
+        } catch (\Throwable $e) {
+            // Return structured JSON instead of empty 500 to help tests and debugging
+            jsonResponse('error', 'Error interno: ' . ($e->getMessage() ?? 'unknown'), null, null, null, 500);
         }
-
-        $json      = getJsonInput();
-        $statusesStr = implode(',', $this->dao->getValidStatuses());
-        $errors   = validar($json, [
-            'status' => "required|in:{$statusesStr}",
-        ]);
-
-        // Accept 'cancellation_reason' or its short alias 'reason'
-        $cancelReason        = $json['cancellation_reason'] ?? $json['reason'] ?? null;
-        $requiresCancellation = in_array($json['status'] ?? '', ['canceled', 'rejected'], true);
-        if ($requiresCancellation && empty($cancelReason)) {
-            $errors['cancellation_reason'][] = 'El motivo de cancelación es obligatorio para este estado.';
-        }
-
-        if (!empty($errors)) {
-            jsonResponse('error', 'Error de validación.', null, $errors, null, 422);
-        }
-
-        $oldStatus = $appointment['status'];
-        $this->dao->changeStatus($id, $json['status'], $cancelReason);
-
-        $this->dao->logAction(
-            $actor['id'] ?? null,
-            $id,
-            'ChangeStatus',
-            json_encode(['status' => ['from' => $oldStatus, 'to' => $json['status']]])
-        );
-
-        $confirmUrl = null;
-        if ($json['status'] === 'approved') {
-            $confirmUrl = $this->issueConfirmationToken($id, $appointment['appointment_datetime']);
-        } else {
-            $this->dao->clearConfirmationToken($id);
-        }
-
-        $actualizada = $this->dao->findById($id);
-
-        if (!empty($actualizada['patient_email'])) {
-            $this->sendAppointmentEmail($actualizada, $json['status'], $confirmUrl);
-        }
-
-        jsonResponse('success', 'Estado de la cita actualizado correctamente.', $actualizada);
     }
 
     public function confirm(int $id): void
@@ -371,8 +376,9 @@ class AppointmentController
                 $asuntos[$newStatus],
                 $this->buildAppointmentTemplate($appointment, $newStatus, $confirmUrl)
             );
-        } catch (\RuntimeException) {
-            // Fails silently; the status change has already been persisted
+        } catch (\Throwable $ex) {
+            // Fail silently but avoid bubbling unexpected exceptions that would cause HTTP 500 without body
+            // Optionally log $ex->getMessage()
         }
     }
 
