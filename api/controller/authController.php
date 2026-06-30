@@ -49,6 +49,21 @@ class AuthController
 
         unset($user['password']);
 
+        // Set access token cookie (Plan B)
+        setcookie(
+            'access_token',
+            $token,
+            [
+                'expires' => time() + 900, // 15 minutes
+                'path' => '/',
+                'domain' => '',
+                'secure' => Env::get('APP_ENV', 'development') === 'production',
+                'httponly' => true,
+                'samesite' => 'Lax'
+            ]
+        );
+
+        // Keep returning token in the JSON body to maintain compatibility with Postman and API clients
         jsonResponse('success', 'Inicio de sesión exitoso.', [
             'access_token' => $token,
             'token_type'   => 'bearer',
@@ -59,24 +74,14 @@ class AuthController
         ]);
     }
 
-    private function getBearerToken(): string
-    {
-        $headers = function_exists('getallheaders') ? array_change_key_case(getallheaders(), CASE_LOWER) : [];
-        return $headers['authorization']
-            ?? $_SERVER['HTTP_AUTHORIZATION']
-            ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
-            ?? '';
-    }
-
     public function logout(): void
     {
-        $auth = $this->getBearerToken();
+        $token = getRequestToken();
 
-        if (!$auth || strncmp($auth, 'Bearer ', 7) !== 0) {
+        if (!$token) {
             jsonResponse('error', 'No autenticado.', null, null, null, 401);
         }
 
-        $token   = substr($auth, 7);
         $user = $this->dao->findUserByToken($token);
 
         if (!$user) {
@@ -85,23 +90,50 @@ class AuthController
 
         $this->dao->revokeToken($token);
 
+        // Expire cookie
+        setcookie(
+            'access_token',
+            '',
+            [
+                'expires' => time() - 3600,
+                'path' => '/',
+                'domain' => '',
+                'secure' => Env::get('APP_ENV', 'development') === 'production',
+                'httponly' => true,
+                'samesite' => 'Lax'
+            ]
+        );
+
         jsonResponse('success', 'Sesión cerrada correctamente.');
     }
 
     public function refresh(): void
     {
-        $auth = $this->getBearerToken();
+        $token = getRequestToken();
 
-        if (!$auth || strncmp($auth, 'Bearer ', 7) !== 0) {
+        if (!$token) {
             jsonResponse('error', 'No autenticado.', null, null, null, 401);
         }
 
-        $oldToken = substr($auth, 7);
-        $newToken = $this->dao->refreshToken($oldToken);
+        $newToken = $this->dao->refreshToken($token);
 
         if (!$newToken) {
             jsonResponse('error', 'Token inválido o expirado.', null, null, null, 401);
         }
+
+        // Set new access token cookie
+        setcookie(
+            'access_token',
+            $newToken,
+            [
+                'expires' => time() + 900, // 15 minutes
+                'path' => '/',
+                'domain' => '',
+                'secure' => Env::get('APP_ENV', 'development') === 'production',
+                'httponly' => true,
+                'samesite' => 'Lax'
+            ]
+        );
 
         jsonResponse('success', 'Token renovado correctamente.', [
             'access_token' => $newToken,
