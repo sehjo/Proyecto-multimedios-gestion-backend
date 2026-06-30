@@ -16,7 +16,7 @@ class AppointmentController
 
     public function index(): void
     {
-        requireAuth();
+        requirePermission('appointments.read');
 
         $perPage = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 50;
         $page    = isset($_GET['page'])     ? max(1, (int) $_GET['page'])     : 1;
@@ -44,7 +44,7 @@ class AppointmentController
 
     public function store(): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('appointments.create');
         $json  = getJsonInput();
 
         $areasStr  = implode(',', $this->dao->getValidAreas());
@@ -81,7 +81,7 @@ class AppointmentController
 
     public function show(int $id): void
     {
-        requireAuth();
+        requirePermission('appointments.read');
 
         $appointment = $this->dao->findById($id);
         if (!$appointment) {
@@ -93,7 +93,7 @@ class AppointmentController
 
     public function update(int $id): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('appointments.update');
         $appointment  = $this->dao->findById($id);
 
         if (!$appointment) {
@@ -151,7 +151,7 @@ class AppointmentController
 
     public function changeStatus(int $id): void
     {
-        $actor  = requireAuth();
+        $actor  = requirePermission('appointments.update');
         $appointment   = $this->dao->findById($id);
 
         if (!$appointment) {
@@ -196,7 +196,7 @@ class AppointmentController
 
     public function confirm(int $id): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('appointments.update');
         $appointment  = $this->dao->findById($id);
 
         if (!$appointment) {
@@ -238,7 +238,7 @@ class AppointmentController
 
     public function destroy(int $id): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('appointments.delete');
         $appointment  = $this->dao->findById($id);
 
         if (!$appointment) {
@@ -254,7 +254,7 @@ class AppointmentController
 
     public function calendar(): void
     {
-        requireAuth();
+        requirePermission('appointments.read');
 
         $fecha = $_GET['date'] ?? date('Y-m-d');
 
@@ -268,7 +268,7 @@ class AppointmentController
 
     public function logs(): void
     {
-        requireAuth();
+        requirePermission('logs.appointments');
 
         $perPage = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 50;
         $page    = isset($_GET['page'])     ? max(1, (int) $_GET['page'])     : 1;
@@ -296,7 +296,7 @@ class AppointmentController
 
     public function showLog(int $id): void
     {
-        requireAuth();
+        requirePermission('logs.appointments');
         $log = $this->dao->findLogById($id);
         if (!$log) {
             jsonResponse('error', 'Log no encontrado.', null, null, null, 404);

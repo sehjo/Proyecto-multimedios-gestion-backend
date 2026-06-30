@@ -15,7 +15,7 @@ class CompanionController
 
     public function index(): void
     {
-        requireAuth();
+        requirePermission('companions.read');
 
         $perPage = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 50;
         $page    = isset($_GET['page'])     ? max(1, (int) $_GET['page'])     : 1;
@@ -41,7 +41,7 @@ class CompanionController
 
     public function show(int $id): void
     {
-        requireAuth();
+        requirePermission('companions.read');
 
         $companion = $this->dao->findById($id);
         if (!$companion) {
@@ -53,7 +53,7 @@ class CompanionController
 
     public function store(): void
     {
-        requireAuth();
+        requirePermission('companions.create');
         $json = getJsonInput();
 
         $errors = validar($json, [
@@ -83,7 +83,7 @@ class CompanionController
 
     public function update(int $id): void
     {
-        requireAuth();
+        requirePermission('companions.update');
 
         $companion = $this->dao->findById($id);
         if (!$companion) {
@@ -118,7 +118,7 @@ class CompanionController
 
     public function destroy(int $id): void
     {
-        requireAuth();
+        requirePermission('companions.delete');
 
         $companion = $this->dao->findById($id);
         if (!$companion) {

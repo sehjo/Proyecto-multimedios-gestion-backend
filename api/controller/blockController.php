@@ -36,7 +36,7 @@ class BlockController
 
     public function store(): void
     {
-        $actor   = requireAuth();
+        $actor   = requirePermission('blocks.create');
         $json    = getJsonInput();
         $errors = validar($json, [
             'date'     => 'required|date',
@@ -80,7 +80,7 @@ class BlockController
 
     public function update(int $id): void
     {
-        $actor   = requireAuth();
+        $actor   = requirePermission('blocks.update');
         $block = $this->dao->findById($id);
 
         if (!$block) {
@@ -139,7 +139,7 @@ class BlockController
 
     public function destroy(int $id): void
     {
-        $actor   = requireAuth();
+        $actor   = requirePermission('blocks.delete');
         $block = $this->dao->findById($id);
 
         if (!$block) {

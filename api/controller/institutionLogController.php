@@ -14,7 +14,7 @@ class InstitutionLogController
 
     public function index(): void
     {
-        requireAuth();
+        requirePermission('logs.institution');
 
         $perPage = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 50;
         $page    = isset($_GET['page'])     ? max(1, (int) $_GET['page'])     : 1;
@@ -43,7 +43,7 @@ class InstitutionLogController
 
     public function show(int $id): void
     {
-        requireAuth();
+        requirePermission('logs.institution');
         $log = $this->dao->findById($id);
         if (!$log) {
             jsonResponse('error', 'Log no encontrado.', null, null, null, 404);
