@@ -42,7 +42,7 @@ class AuthController
         $token = $this->dao->issueToken($user['id']);
 
         $permisoDao = new PermissionDao();
-        $permissions   = $permisoDao->userDirectPermissions($user['id']);
+        $permissions   = $permisoDao->userAllPermissions($user['id']);
 
         $usuarioDao = new UserDao();
         $roles      = $usuarioDao->userRoles($user['id']);
