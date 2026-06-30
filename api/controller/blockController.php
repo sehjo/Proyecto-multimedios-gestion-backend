@@ -38,10 +38,14 @@ class BlockController
     {
         $actor   = requirePermission('blocks.create');
         $json    = getJsonInput();
+        // Note: `full_day` may be boolean false which PHP treats as empty in some validators.
+        // Validate `date` normally and ensure `full_day` key is present explicitly.
         $errors = validar($json, [
             'date'     => 'required|date',
-            'full_day' => 'required',
         ]);
+        if (!array_key_exists('full_day', $json)) {
+            $errors['full_day'][] = 'El campo full_day es obligatorio.';
+        }
 
         if (isset($json['date']) && strtotime($json['date']) < strtotime(date('Y-m-d'))) {
             $errors['date'][] = 'La fecha del bloqueo no puede ser en el pasado.';
