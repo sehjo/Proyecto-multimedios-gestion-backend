@@ -295,14 +295,23 @@ class AppointmentController
     {
         requirePermission('appointments.read');
 
-        $fecha = $_GET['date'] ?? date('Y-m-d');
+        $startDate = $_GET['start_date'] ?? null;
+        $endDate   = $_GET['end_date']   ?? null;
+        $area      = $_GET['attention_area'] ?? null;
+        $errors    = [];
 
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
-            jsonResponse('error', 'El parámetro date debe tener formato YYYY-MM-DD.', null, null, null, 422);
+        if (!$startDate || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate)) {
+            $errors['start_date'][] = 'El parámetro start_date es obligatorio (YYYY-MM-DD).';
+        }
+        if (!$endDate || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)) {
+            $errors['end_date'][] = 'El parámetro end_date es obligatorio (YYYY-MM-DD).';
+        }
+        if (!empty($errors)) {
+            jsonResponse('error', 'Error de validación.', null, $errors, null, 422);
         }
 
-        $datos = $this->dao->calendar($fecha);
-        jsonResponse('success', "Citas del {$fecha} obtenidas correctamente.", $datos);
+        $datos = $this->dao->calendarRange($startDate, $endDate, $area ?: null);
+        jsonResponse('success', "Citas del {$startDate} al {$endDate} obtenidas correctamente.", $datos);
     }
 
     public function logs(): void

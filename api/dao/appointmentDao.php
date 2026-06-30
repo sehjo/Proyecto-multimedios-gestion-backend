@@ -160,16 +160,31 @@ class AppointmentDao
         ]);
     }
 
-    public function calendar(string $fecha): array
+    // Returns appointments within [startDate, endDate] grouped by date
+    // (YYYY-MM-DD => appointment[]), the shape the calendar's month/week view
+    // renders directly without an extra client-side grouping pass.
+    public function calendarRange(string $startDate, string $endDate, ?string $attentionArea = null): array
     {
+        $conditions = ['DATE(a.appointment_datetime) BETWEEN :start AND :end'];
+        $params = [':start' => $startDate, ':end' => $endDate];
+        if ($attentionArea) {
+            $conditions[] = 'a.attention_area = :area';
+            $params[':area'] = $attentionArea;
+        }
+
         $stmt = $this->connection->prepare(
-            "SELECT a.* FROM appointments a
-             WHERE DATE(a.appointment_datetime) = :fecha
-             ORDER BY a.appointment_datetime ASC"
+            "SELECT a.* FROM appointments a WHERE " . implode(' AND ', $conditions)
+            . " ORDER BY a.appointment_datetime ASC"
         );
-        $stmt->execute([':fecha' => $fecha]);
+        $stmt->execute($params);
         $rows = array_map([$this, 'stripConfirmationToken'], $stmt->fetchAll());
-        return array_map([$this, 'withRelations'], $rows);
+        $rows = array_map([$this, 'withRelations'], $rows);
+
+        $byDate = [];
+        foreach ($rows as $row) {
+            $byDate[substr($row['appointment_datetime'], 0, 10)][] = $row;
+        }
+        return $byDate;
     }
 
     public function logAction(?int $actorId, ?int $targetId, string $accion, ?string $changes): void
