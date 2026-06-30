@@ -175,3 +175,14 @@ function requireAuth()
     }
     return $user;
 }
+
+function requirePermission(string $permission)
+{
+    $user = requireAuth();
+    require_once __DIR__ . '/../dao/permissionDao.php';
+    $permissionDao = new PermissionDao();
+    if (!$permissionDao->userHasPermission((int) $user['id'], $permission)) {
+        jsonResponse('error', 'No tienes permisos suficientes para realizar esta acción.', null, null, null, 403);
+    }
+    return $user;
+}

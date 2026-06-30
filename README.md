@@ -73,7 +73,7 @@ http://localhost/Proyecto-multimedios-gestion-backend/api/v1/
 ### Con el servidor integrado de PHP
 
 ```bash
-php -S localhost:8000 -t public
+php -S localhost:8000 index.php
 ```
 
 La API queda disponible en:

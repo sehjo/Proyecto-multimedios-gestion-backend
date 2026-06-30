@@ -23,7 +23,7 @@ class UserController
     // -----------------------------------------------------------------------
     public function index(): void
     {
-        requireAuth();
+        requirePermission('users.read');
 
         $perPage = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 15;
         $page    = isset($_GET['page'])     ? max(1, (int) $_GET['page'])     : 1;
@@ -92,7 +92,7 @@ class UserController
     // -----------------------------------------------------------------------
     public function store(): void
     {
-        $actor   = requireAuth();
+        $actor   = requirePermission('users.create');
         $json    = getJsonInput();
         $errors = validar($json, [
             'name'       => 'required|max:255',
@@ -138,7 +138,7 @@ class UserController
     // -----------------------------------------------------------------------
     public function show(int $id): void
     {
-        requireAuth();
+        requirePermission('users.read');
 
         $user = $this->dao->findById($id);
         if (!$user) {
@@ -155,7 +155,7 @@ class UserController
     // -----------------------------------------------------------------------
     public function update(int $id): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('users.update');
 
         // Security check before any DB lookup or input validation
         if ((int) $actor['id'] === $id) {
@@ -205,7 +205,7 @@ class UserController
     // -----------------------------------------------------------------------
     public function changeStatus(int $id): void
     {
-        $actor   = requireAuth();
+        $actor   = requirePermission('users.update');
         $json    = getJsonInput();
         $errors = validar($json, ['status' => 'required|in:active,inactive']);
 
@@ -254,21 +254,11 @@ class UserController
     // -----------------------------------------------------------------------
     public function assignRole(int $id): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('users.update');
 
         // Security: prevent self-role assignment
         if ((int) $actor['id'] === $id) {
             jsonResponse('error', 'No puedes asignarte roles a ti mismo.', null, null, null, 403);
-        }
-
-        // Only admins/super-admins may assign roles to others
-        $actorRoleNames = array_column($this->dao->userRoles((int) $actor['id']), 'name');
-        $isAdmin = false;
-        foreach ($actorRoleNames as $nombre) {
-            if (str_contains(strtolower($nombre), 'admin')) { $isAdmin = true; break; }
-        }
-        if (!$isAdmin) {
-            jsonResponse('error', 'No tienes permisos para asignar roles.', null, null, null, 403);
         }
 
         $json    = getJsonInput();
@@ -304,6 +294,7 @@ class UserController
         // Privilege escalation guard: assigning a 'super-*' role requires the actor to hold one.
         // Check is done against the resolved role name (works for both numeric ID and name input).
         if (str_contains(strtolower($role['name']), 'super')) {
+            $actorRoleNames = array_column($this->dao->userRoles((int) $actor['id']), 'name');
             $hasSuperRole = array_filter(
                 $actorRoleNames,
                 fn($n) => str_contains(strtolower($n), 'super')
@@ -328,7 +319,7 @@ class UserController
     // -----------------------------------------------------------------------
     public function revokeRole(int $userId, string $rolParam): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('users.update');
 
         // Security check before any DB lookup
         if ((int) $actor['id'] === $userId) {
@@ -373,7 +364,7 @@ class UserController
     // -----------------------------------------------------------------------
     public function assignPermission(int $id): void
     {
-        $actor   = requireAuth();
+        $actor   = requirePermission('users.update');
         $json    = getJsonInput();
         $errors = validar($json, ['permission' => 'required']);
 
@@ -415,7 +406,7 @@ class UserController
     // -----------------------------------------------------------------------
     public function revokePermission(int $userId, string $permisoParam): void
     {
-        $actor   = requireAuth();
+        $actor   = requirePermission('users.update');
         $user = $this->dao->findById($userId);
 
         if (!$user) {
@@ -449,7 +440,7 @@ class UserController
     // -----------------------------------------------------------------------
     public function statsByStatus(): void
     {
-        requireAuth();
+        requirePermission('users.read');
         jsonResponse('success', 'Usuarios por estado obtenidos correctamente.', $this->dao->countByStatus());
     }
 
@@ -458,7 +449,7 @@ class UserController
     // -----------------------------------------------------------------------
     public function statsByRole(): void
     {
-        requireAuth();
+        requirePermission('users.read');
         jsonResponse('success', 'Usuarios por rol obtenidos correctamente.', $this->dao->countByRole());
     }
 
@@ -467,7 +458,7 @@ class UserController
     // -----------------------------------------------------------------------
     public function logs(): void
     {
-        requireAuth();
+        requirePermission('logs.users');
 
         $perPage = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 50;
         $page    = isset($_GET['page'])     ? max(1, (int) $_GET['page'])     : 1;
@@ -497,7 +488,7 @@ class UserController
     // -----------------------------------------------------------------------
     public function showLog(int $id): void
     {
-        requireAuth();
+        requirePermission('logs.users');
         $log = $this->dao->findLogById($id);
         if (!$log) {
             jsonResponse('error', 'Log no encontrado.', null, null, null, 404);

@@ -15,7 +15,7 @@ class PatientController
 
     public function index(): void
     {
-        requireAuth();
+        requirePermission('patients.read');
 
         $perPage = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 50;
         $page    = isset($_GET['page'])     ? max(1, (int) $_GET['page'])     : 1;
@@ -42,7 +42,7 @@ class PatientController
 
     public function store(): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('patients.create');
         $json = getJsonInput();
 
         $errors = validar($json, [
@@ -80,7 +80,7 @@ class PatientController
 
     public function show(int $id): void
     {
-        requireAuth();
+        requirePermission('patients.read');
 
         $patient = $this->dao->findById($id);
         if (!$patient) {
@@ -92,7 +92,7 @@ class PatientController
 
     public function update(int $id): void
     {
-        $actor    = requireAuth();
+        $actor    = requirePermission('patients.update');
         $patient = $this->dao->findById($id);
 
         if (!$patient) {
@@ -155,7 +155,7 @@ class PatientController
 
     public function destroy(int $id): void
     {
-        $actor    = requireAuth();
+        $actor    = requirePermission('patients.delete');
         $patient = $this->dao->findById($id);
 
         if (!$patient) {
@@ -178,7 +178,7 @@ class PatientController
 
     public function logs(): void
     {
-        requireAuth();
+        requirePermission('logs.patients');
 
         $perPage = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 50;
         $page    = isset($_GET['page'])     ? max(1, (int) $_GET['page'])     : 1;
