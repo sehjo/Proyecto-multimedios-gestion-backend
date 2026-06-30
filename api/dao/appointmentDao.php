@@ -35,8 +35,7 @@ class AppointmentDao
     public function index(int $limit, int $offset, array $filters = []): array
     {
         $where = $this->buildWhere($filters);
-        $sql   = "SELECT a.*, p.full_name AS patient_name FROM appointments a
-                  LEFT JOIN patients p ON p.id = a.patient_id"
+        $sql   = "SELECT a.* FROM appointments a"
                . $where['sql']
                . " ORDER BY a.appointment_datetime DESC LIMIT :limit OFFSET :offset";
         $stmt = $this->connection->prepare($sql);
@@ -46,7 +45,8 @@ class AppointmentDao
         $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
-        return array_map([$this, 'stripConfirmationToken'], $stmt->fetchAll());
+        $rows = array_map([$this, 'stripConfirmationToken'], $stmt->fetchAll());
+        return array_map([$this, 'withRelations'], $rows);
     }
 
     public function findById(int $id): ?array
@@ -163,13 +163,13 @@ class AppointmentDao
     public function calendar(string $fecha): array
     {
         $stmt = $this->connection->prepare(
-            "SELECT a.*, p.full_name AS patient_name FROM appointments a
-             LEFT JOIN patients p ON p.id = a.patient_id
+            "SELECT a.* FROM appointments a
              WHERE DATE(a.appointment_datetime) = :fecha
              ORDER BY a.appointment_datetime ASC"
         );
         $stmt->execute([':fecha' => $fecha]);
-        return array_map([$this, 'stripConfirmationToken'], $stmt->fetchAll());
+        $rows = array_map([$this, 'stripConfirmationToken'], $stmt->fetchAll());
+        return array_map([$this, 'withRelations'], $rows);
     }
 
     public function logAction(?int $actorId, ?int $targetId, string $accion, ?string $changes): void
