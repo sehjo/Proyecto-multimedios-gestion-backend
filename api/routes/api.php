@@ -113,7 +113,7 @@ if ($recurso === 'companions') {
 // =========================================================================
 // APPOINTMENTS  /v1/appointments[/{id}[/change-status|confirm|logs[/{id}]]]
 //               + /v1/appointments/calendar
-//               + /v1/appointments/{id}/confirm-attendance  (public)
+//               + /v1/appointments/{id}/confirm-attendance?token=...  (public, requires single-use token)
 // =========================================================================
 if ($recurso === 'appointments') {
     $ctrl = new AppointmentController();

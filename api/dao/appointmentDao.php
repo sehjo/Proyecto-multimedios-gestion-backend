@@ -46,7 +46,7 @@ class AppointmentDao
         $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
-        return $stmt->fetchAll();
+        return array_map([$this, 'stripConfirmationToken'], $stmt->fetchAll());
     }
 
     public function findById(int $id): ?array
@@ -58,7 +58,13 @@ class AppointmentDao
         );
         $stmt->execute([':id' => $id]);
         $row = $stmt->fetch();
-        return $row ?: null;
+        return $row ? $this->stripConfirmationToken($row) : null;
+    }
+
+    private function stripConfirmationToken(array $row): array
+    {
+        unset($row['confirmation_token_hash'], $row['confirmation_token_expires_at']);
+        return $row;
     }
 
     public function withRelations(array $appointment): array
@@ -163,7 +169,7 @@ class AppointmentDao
              ORDER BY a.appointment_datetime ASC"
         );
         $stmt->execute([':fecha' => $fecha]);
-        return $stmt->fetchAll();
+        return array_map([$this, 'stripConfirmationToken'], $stmt->fetchAll());
     }
 
     public function logAction(?int $actorId, ?int $targetId, string $accion, ?string $changes): void
@@ -187,6 +193,38 @@ class AppointmentDao
             "UPDATE appointments SET status = 'confirmed', updated_at = :now WHERE id = :id"
         );
         return $stmt->execute([':now' => date('Y-m-d H:i:s'), ':id' => $id]);
+    }
+
+    public function saveConfirmationToken(int $id, string $hashedToken, string $expiresAt): bool
+    {
+        $stmt = $this->connection->prepare(
+            "UPDATE appointments
+             SET confirmation_token_hash = :hash, confirmation_token_expires_at = :expires
+             WHERE id = :id"
+        );
+        return $stmt->execute([':hash' => $hashedToken, ':expires' => $expiresAt, ':id' => $id]);
+    }
+
+    public function clearConfirmationToken(int $id): bool
+    {
+        $stmt = $this->connection->prepare(
+            "UPDATE appointments
+             SET confirmation_token_hash = NULL, confirmation_token_expires_at = NULL
+             WHERE id = :id"
+        );
+        return $stmt->execute([':id' => $id]);
+    }
+
+    public function findByConfirmationToken(string $hashedToken): ?array
+    {
+        $stmt = $this->connection->prepare(
+            "SELECT a.*, p.full_name AS patient_name, p.email AS patient_email FROM appointments a
+             LEFT JOIN patients p ON p.id = a.patient_id
+             WHERE a.confirmation_token_hash = :hash"
+        );
+        $stmt->execute([':hash' => $hashedToken]);
+        $row = $stmt->fetch();
+        return $row ?: null;
     }
 
     public function destroy(int $id): bool

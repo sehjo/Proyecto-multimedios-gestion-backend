@@ -156,11 +156,14 @@ CREATE TABLE IF NOT EXISTS appointments (
     status               VARCHAR(20)  NOT NULL DEFAULT 'pending',
     cancellation_reason  TEXT         NULL,
     is_guest             TINYINT(1)   NOT NULL DEFAULT 0,
+    confirmation_token_hash       CHAR(64)  NULL,
+    confirmation_token_expires_at TIMESTAMP NULL,
     created_at           TIMESTAMP    NULL,
     updated_at           TIMESTAMP    NULL,
     CONSTRAINT fk_appt_patient   FOREIGN KEY (patient_id)    REFERENCES patients   (id),
     CONSTRAINT fk_appt_accepted  FOREIGN KEY (accepted_by_id)REFERENCES users      (id) ON DELETE SET NULL,
-    CONSTRAINT fk_appt_companion FOREIGN KEY (companion_id)  REFERENCES companions (id) ON DELETE SET NULL
+    CONSTRAINT fk_appt_companion FOREIGN KEY (companion_id)  REFERENCES companions (id) ON DELETE SET NULL,
+    INDEX idx_appt_confirmation_token (confirmation_token_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- -------------------------------------------------------------------
