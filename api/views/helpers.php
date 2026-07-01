@@ -196,3 +196,51 @@ function requirePermission(string $permission)
     }
     return $user;
 }
+
+/**
+ * Validates the Bearer token as a guest-appointment JWT.
+ * Returns the token claims (including `sub` = guest email) when valid,
+ * or null when absent/invalid/expired.
+ */
+function getGuestClaims(): ?array
+{
+    $token = getRequestToken();
+    if (!$token) {
+        return null;
+    }
+
+    require_once __DIR__ . '/../config/jwt.php';
+    $claims = Jwt::decode($token);
+
+    if (!$claims || ($claims['context'] ?? null) !== 'guest' || empty($claims['sub'])) {
+        return null;
+    }
+
+    return $claims;
+}
+
+/**
+ * Allows access when the request carries either a normal authenticated
+ * session OR a valid guest JWT. Used by the read-only endpoints the guest
+ * booking flow needs (availability, blocks).
+ */
+function allowGuestOrAuth(): void
+{
+    if (getGuestClaims()) {
+        return;
+    }
+    requireAuth();
+}
+
+/**
+ * Allows access when the request carries a valid guest JWT, otherwise
+ * falls back to the normal permission check. Used by read-only endpoints
+ * that are permission-gated for staff but must also serve the guest flow.
+ */
+function allowGuestOrPermission(string $permission): void
+{
+    if (getGuestClaims()) {
+        return;
+    }
+    requirePermission($permission);
+}

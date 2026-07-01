@@ -298,7 +298,7 @@ class AppointmentController
 
     public function calendar(): void
     {
-        requirePermission('appointments.read');
+        allowGuestOrPermission('appointments.read');
 
         $startDate = $_GET['start_date'] ?? null;
         $endDate   = $_GET['end_date']   ?? null;

@@ -426,8 +426,8 @@ check('guest start non-institutional email -> 422', $code === 422 && isset($body
 check('guest start -> 200 with verification token', $code === 200 && !empty($body['data']['verification_token']), $body);
 $verificationToken = $body['data']['verification_token'] ?? null;
 
+// The verification JWT is sent as a Bearer token (as the frontend does), not in the body.
 [$code, $body] = request('POST', '/guest-appointments', [
-    'verification_token'   => $verificationToken,
     'full_name'            => 'Guest Smoke Patient',
     'identifier'           => '9-9999-0003',
     'birth_date'           => '1997-03-10',
@@ -436,11 +436,14 @@ $verificationToken = $body['data']['verification_token'] ?? null;
     'attention_area'       => 'general_medicine',
     'reason'               => 'Consulta general',
     'appointment_datetime' => futureDatetime(6),
-]);
+], $verificationToken);
 check('guest appointment creation -> 201', $code === 201 && !empty($body['data']['id']), $body);
 
-[$code, $body] = request('POST', '/guest-appointments', ['verification_token' => 'bogus-token']);
-check('guest appointment missing fields -> 422', $code === 422, $body);
+[$code, $body] = request('POST', '/guest-appointments', ['full_name' => 'No Token']);
+check('guest appointment without valid token -> 401', $code === 401, $body);
+
+[$code, $body] = request('POST', '/guest-appointments', [], $verificationToken);
+check('guest appointment valid token but missing fields -> 422', $code === 422, $body);
 
 // =============================================================================
 // SUMMARY

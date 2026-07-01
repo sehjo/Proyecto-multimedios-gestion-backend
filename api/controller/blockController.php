@@ -14,7 +14,7 @@ class BlockController
 
     public function index(): void
     {
-        requireAuth();
+        allowGuestOrAuth();
         $filters = [
             'date'     => $_GET['date']     ?? null,
             'full_day' => $_GET['full_day'] ?? null,

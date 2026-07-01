@@ -14,7 +14,7 @@ class AvailabilityController
 
     public function index(): void
     {
-        requireAuth();
+        allowGuestOrAuth();
         $enabled = isset($_GET['enabled'])
             ? filter_var($_GET['enabled'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
             : null;

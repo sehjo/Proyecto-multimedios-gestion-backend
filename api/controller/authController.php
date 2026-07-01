@@ -176,10 +176,15 @@ class AuthController
                 $this->buildResetPasswordTemplate($user['name'], $resetUrl, $expiresAt)
             );
         } catch (\RuntimeException) {
-            // Email failed but token is already saved; token returned for testing purposes
+            // Email failed but the token is already saved.
         }
 
-        jsonResponse('success', $genericMsg, ['reset_token' => $plainToken]);
+        // Never expose the token in production; the user must obtain it from the
+        // email link. Returned only in non-production to support automated tests.
+        $data = Env::get('APP_ENV', 'production') !== 'production'
+            ? ['reset_token' => $plainToken]
+            : null;
+        jsonResponse('success', $genericMsg, $data);
     }
 
     public function resetPassword(): void

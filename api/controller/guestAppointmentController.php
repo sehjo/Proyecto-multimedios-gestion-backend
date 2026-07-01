@@ -3,6 +3,9 @@
 require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../dao/guestAppointmentDao.php';
 require_once __DIR__ . '/../dao/appointmentDao.php';
+require_once __DIR__ . '/../config/mailer.php';
+require_once __DIR__ . '/../config/jwt.php';
+require_once __DIR__ . '/../config/env.php';
 
 class GuestAppointmentController
 {
@@ -17,7 +20,7 @@ class GuestAppointmentController
 
     /**
      * POST /api/v1/guest-appointments/start
-     * Sends a verification token to the guest's email address.
+     * Emails the guest a verification link containing a short-lived signed JWT.
      */
     public function start(): void
     {
@@ -36,33 +39,80 @@ class GuestAppointmentController
             jsonResponse('error', 'Error de validación.', null, $errors, null, 422);
         }
 
-        $token = bin2hex(random_bytes(16));
-        $this->dao->saveVerificationToken($json['email'], $token);
+        // Stateless, signed, 30-minute token. The frontend reads `sub` client-side
+        // and sends the token back as a Bearer credential on subsequent requests.
+        $token = Jwt::encode([
+            'sub'     => $json['email'],
+            'context' => 'guest',
+        ], 1800);
 
-        jsonResponse('success', 'Si el correo es válido, recibirás un código de verificación.', [
-            'email'              => $json['email'],
-            'verification_token' => $token,
-        ]);
+        $frontendUrl = rtrim(Env::get('FRONTEND_URL', 'http://localhost:5173'), '/');
+        $verifyUrl   = $frontendUrl . '/guest-appointments/new?token=' . $token;
+
+        try {
+            (new Mailer())->send(
+                $json['email'],
+                '[MediCode] Verifica tu correo para agendar tu cita',
+                $this->buildVerificationTemplate($verifyUrl)
+            );
+        } catch (\Throwable) {
+            // Fail silently to avoid revealing whether the email exists.
+        }
+
+        // The frontend never reads the token from this response (it uses the
+        // email link); returned only in non-production to support automated tests.
+        $data = Env::get('APP_ENV', 'production') !== 'production'
+            ? ['verification_token' => $token]
+            : null;
+        jsonResponse('success', 'Si el correo es válido, recibirás un enlace de verificación.', $data);
+    }
+
+    private function buildVerificationTemplate(string $verifyUrl): string
+    {
+        $url = htmlspecialchars($verifyUrl);
+        return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head>'
+             . '<body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:0;">'
+             . '<div style="max-width:600px;margin:40px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1);">'
+             . '<div style="background:#1a56db;padding:32px;text-align:center;"><h1 style="color:#fff;margin:0;font-size:24px;">MediCode UCR</h1></div>'
+             . '<div style="padding:32px;color:#333;">'
+             . '<p>Has solicitado agendar una cita como invitado/a.</p>'
+             . '<p>Haz clic en el siguiente botón para verificar tu correo y continuar con tu solicitud. El enlace expira en <strong>30 minutos</strong>.</p>'
+             . '<div style="text-align:center;margin:28px 0;">'
+             . '<a href="' . $url . '" style="background:#1a56db;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block;">Verificar y agendar cita</a>'
+             . '</div>'
+             . '<p style="font-size:13px;color:#6b7280;">Si el botón no funciona, copia y pega este enlace en tu navegador:</p>'
+             . '<p style="font-size:12px;color:#1a56db;word-break:break-all;">' . $url . '</p>'
+             . '<p style="font-size:14px;color:#6b7280;">Si no solicitaste esto, ignora este mensaje.</p>'
+             . '</div>'
+             . '<div style="padding:24px 32px;border-top:1px solid #e5e7eb;font-size:12px;color:#9ca3af;text-align:center;">'
+             . 'MediCode — Sistema de Citas Médicas UCR &bull; Correo automático, no responder.'
+             . '</div></div></body></html>';
     }
 
     /**
      * POST /api/v1/guest-appointments
-     * Creates a guest appointment using the verification token.
+     * Creates a guest appointment. The verification JWT is supplied as a
+     * Bearer token (from the email link); its `sub` claim is the guest email.
      */
     public function store(): void
     {
+        $claims = getGuestClaims();
+        if (!$claims) {
+            jsonResponse('error', 'El enlace de verificación no es válido o ha expirado.', null, null, null, 401);
+        }
+        $guestEmail = $claims['sub'];
+
         $json    = getJsonInput();
         $areasStr = implode(',', $this->citaDao->getValidAreas());
 
         $errors = validar($json, [
-            'verification_token'   => 'required',
             'full_name'            => 'required|max:255',
             'identifier'           => 'required|max:50|regex:/^\d{1}-\d{4}-\d{4}$/',
             'birth_date'           => 'required|date|before_today',
             'user_type'            => 'required|max:100',
             'phone'                => 'required|max:20|regex:/^(\+\d{1,3}\s)?\d{4}[\s\-]\d{4}$/',
             'attention_area'       => "required|in:{$areasStr}",
-            'reason'               => 'required|max:1000',
+            'reason'               => 'nullable|max:1000',
             'appointment_datetime' => 'required|after_now',
         ]);
 
@@ -84,23 +134,11 @@ class GuestAppointmentController
             jsonResponse('error', 'Error de validación.', null, $errors, null, 422);
         }
 
-        // Verify token
-        $record = $this->dao->findVerificationToken($json['verification_token']);
-        if (!$record) {
-            jsonResponse('error', 'El token de verificación no es válido o ha expirado.', null, null, null, 422);
-        }
-
-        // Expiry: 30 minutes
-        if (strtotime($record['created_at']) + 1800 < time()) {
-            $this->dao->deleteVerificationToken($json['verification_token']);
-            jsonResponse('error', 'El token de verificación ha expirado.', null, null, null, 422);
-        }
-
-        // Find or create patient
+        // Find or create patient (email comes from the verified JWT, not the body)
         $patientId = $this->dao->findOrCreatePatient([
             'full_name'  => $json['full_name'],
             'identifier' => $json['identifier'],
-            'email'      => $record['email'],
+            'email'      => $guestEmail,
             'birth_date' => $json['birth_date'],
             'user_type'  => $json['user_type'],
             'phone'      => $json['phone'],
@@ -118,8 +156,6 @@ class GuestAppointmentController
 
         $citaId = $this->dao->createAppointment($patientId, $companionId, $json);
         $appointment   = $this->dao->findAppointmentById($citaId);
-
-        $this->dao->deleteVerificationToken($json['verification_token']);
 
         jsonResponse('success', 'Solicitud de cita registrada correctamente.', $appointment, null, null, 201);
     }
