@@ -35,8 +35,7 @@ class AppointmentDao
     public function index(int $limit, int $offset, array $filters = []): array
     {
         $where = $this->buildWhere($filters);
-        $sql   = "SELECT a.*, p.full_name AS patient_name FROM appointments a
-                  LEFT JOIN patients p ON p.id = a.patient_id"
+        $sql   = "SELECT a.* FROM appointments a"
                . $where['sql']
                . " ORDER BY a.appointment_datetime DESC LIMIT :limit OFFSET :offset";
         $stmt = $this->connection->prepare($sql);
@@ -46,7 +45,8 @@ class AppointmentDao
         $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
-        return $stmt->fetchAll();
+        $rows = array_map([$this, 'stripConfirmationToken'], $stmt->fetchAll());
+        return array_map([$this, 'withRelations'], $rows);
     }
 
     public function findById(int $id): ?array
@@ -58,7 +58,13 @@ class AppointmentDao
         );
         $stmt->execute([':id' => $id]);
         $row = $stmt->fetch();
-        return $row ?: null;
+        return $row ? $this->stripConfirmationToken($row) : null;
+    }
+
+    private function stripConfirmationToken(array $row): array
+    {
+        unset($row['confirmation_token_hash'], $row['confirmation_token_expires_at']);
+        return $row;
     }
 
     public function withRelations(array $appointment): array
@@ -154,16 +160,31 @@ class AppointmentDao
         ]);
     }
 
-    public function calendar(string $fecha): array
+    // Returns appointments within [startDate, endDate] grouped by date
+    // (YYYY-MM-DD => appointment[]), the shape the calendar's month/week view
+    // renders directly without an extra client-side grouping pass.
+    public function calendarRange(string $startDate, string $endDate, ?string $attentionArea = null): array
     {
+        $conditions = ['DATE(a.appointment_datetime) BETWEEN :start AND :end'];
+        $params = [':start' => $startDate, ':end' => $endDate];
+        if ($attentionArea) {
+            $conditions[] = 'a.attention_area = :area';
+            $params[':area'] = $attentionArea;
+        }
+
         $stmt = $this->connection->prepare(
-            "SELECT a.*, p.full_name AS patient_name FROM appointments a
-             LEFT JOIN patients p ON p.id = a.patient_id
-             WHERE DATE(a.appointment_datetime) = :fecha
-             ORDER BY a.appointment_datetime ASC"
+            "SELECT a.* FROM appointments a WHERE " . implode(' AND ', $conditions)
+            . " ORDER BY a.appointment_datetime ASC"
         );
-        $stmt->execute([':fecha' => $fecha]);
-        return $stmt->fetchAll();
+        $stmt->execute($params);
+        $rows = array_map([$this, 'stripConfirmationToken'], $stmt->fetchAll());
+        $rows = array_map([$this, 'withRelations'], $rows);
+
+        $byDate = [];
+        foreach ($rows as $row) {
+            $byDate[substr($row['appointment_datetime'], 0, 10)][] = $row;
+        }
+        return $byDate;
     }
 
     public function logAction(?int $actorId, ?int $targetId, string $accion, ?string $changes): void
@@ -187,6 +208,55 @@ class AppointmentDao
             "UPDATE appointments SET status = 'confirmed', updated_at = :now WHERE id = :id"
         );
         return $stmt->execute([':now' => date('Y-m-d H:i:s'), ':id' => $id]);
+    }
+
+    public function saveConfirmationToken(int $id, string $hashedToken, string $expiresAt): bool
+    {
+        try {
+            $stmt = $this->connection->prepare(
+                "UPDATE appointments
+                 SET confirmation_token_hash = :hash, confirmation_token_expires_at = :expires
+                 WHERE id = :id"
+            );
+            return (bool) $stmt->execute([':hash' => $hashedToken, ':expires' => $expiresAt, ':id' => $id]);
+        } catch (\PDOException $ex) {
+            // If the column doesn't exist in the current DB schema, avoid throwing
+            // and return false so callers can continue without failing the whole request.
+            // This makes the API more tolerant to missing migrations in dev environments.
+            if (strpos($ex->getMessage(), 'Unknown column') !== false || strpos($ex->getMessage(), '1054') !== false) {
+                return false;
+            }
+            throw $ex;
+        }
+    }
+
+    public function clearConfirmationToken(int $id): bool
+    {
+        try {
+            $stmt = $this->connection->prepare(
+                "UPDATE appointments
+                 SET confirmation_token_hash = NULL, confirmation_token_expires_at = NULL
+                 WHERE id = :id"
+            );
+            return (bool) $stmt->execute([':id' => $id]);
+        } catch (\PDOException $ex) {
+            if (strpos($ex->getMessage(), 'Unknown column') !== false || strpos($ex->getMessage(), '1054') !== false) {
+                return false;
+            }
+            throw $ex;
+        }
+    }
+
+    public function findByConfirmationToken(string $hashedToken): ?array
+    {
+        $stmt = $this->connection->prepare(
+            "SELECT a.*, p.full_name AS patient_name, p.email AS patient_email FROM appointments a
+             LEFT JOIN patients p ON p.id = a.patient_id
+             WHERE a.confirmation_token_hash = :hash"
+        );
+        $stmt->execute([':hash' => $hashedToken]);
+        $row = $stmt->fetch();
+        return $row ?: null;
     }
 
     public function destroy(int $id): bool

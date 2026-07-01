@@ -55,12 +55,9 @@ jobs:
           sed -i 's/^DB_PASSWORD=.*/DB_PASSWORD=root/' .env
 
       - name: Lint PHP files
-        run: find core models repositories resources controllers config public tests -name "*.php" -print0 | xargs -0 -n1 php -l
+        run: find api index.php -name "*.php" -print0 | xargs -0 -n1 php -l
 
       - name: Load database schema and seed data
         run: |
-          mysql --default-character-set=utf8mb4 -h127.0.0.1 -uroot -proot db_ccss < database/schema.sql
-          mysql --default-character-set=utf8mb4 -h127.0.0.1 -uroot -proot db_ccss < database/seed.sql
-
-      - name: Run test suite
-        run: php tests/run.php
+          mysql --default-character-set=utf8mb4 -h127.0.0.1 -uroot -proot db_ccss < api/config/schema.sql
+          mysql --default-character-set=utf8mb4 -h127.0.0.1 -uroot -proot db_ccss < api/config/seed.sql

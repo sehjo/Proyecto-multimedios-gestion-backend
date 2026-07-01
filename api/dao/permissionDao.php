@@ -45,6 +45,22 @@ class PermissionDao
         return $stmt->fetchAll();
     }
 
+    public function userAllPermissions(int $userId): array
+    {
+        $stmt = $this->connection->prepare(
+            "SELECT DISTINCT p.* FROM permissions p
+             INNER JOIN user_has_permissions uhp ON uhp.permission_id = p.id
+             WHERE uhp.user_id = :user_id
+             UNION
+             SELECT DISTINCT p.* FROM permissions p
+             INNER JOIN role_has_permissions rhp ON rhp.permission_id = p.id
+             INNER JOIN user_has_roles uhr ON uhr.role_id = rhp.role_id
+             WHERE uhr.user_id = :user_id_role"
+        );
+        $stmt->execute([':user_id' => $userId, ':user_id_role' => $userId]);
+        return $stmt->fetchAll();
+    }
+
     public function assignPermissionToUser(int $userId, int $permissionId): void
     {
         $stmt = $this->connection->prepare(

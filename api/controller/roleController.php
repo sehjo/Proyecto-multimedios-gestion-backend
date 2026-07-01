@@ -14,13 +14,13 @@ class RoleController
 
     public function index(): void
     {
-        requireAuth();
+        requirePermission('roles.read');
         jsonResponse('success', 'Roles obtenidos correctamente.', $this->dao->index());
     }
 
     public function store(): void
     {
-        $actor   = requireAuth();
+        $actor   = requirePermission('roles.create');
         $json    = getJsonInput();
         $errors = validar($json, ['name' => 'required|max:50']);
 
@@ -46,7 +46,7 @@ class RoleController
 
     public function logs(): void
     {
-        requireAuth();
+        requirePermission('roles.read');
 
         $perPage = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 50;
         $page    = isset($_GET['page'])     ? max(1, (int) $_GET['page'])     : 1;
@@ -67,7 +67,7 @@ class RoleController
 
     public function update(int $id): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('roles.update');
 
         // Authorization before DB lookup: 403 if actor owns this role
         $actorRoles = $this->dao->userRoleIds((int) $actor['id']);
@@ -126,7 +126,7 @@ class RoleController
 
     public function destroy(int $id): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('roles.delete');
 
         // Authorization before DB lookup: 403 if actor owns this role
         $actorRoles = $this->dao->userRoleIds((int) $actor['id']);

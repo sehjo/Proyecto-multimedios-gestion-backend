@@ -16,9 +16,12 @@ require_once __DIR__ . '/../controller/institutionLogController.php';
 require_once __DIR__ . '/../controller/statsController.php';
 
 // CORS
-header('Access-Control-Allow-Origin: *');
+require_once __DIR__ . '/../config/env.php';
+$origin = Env::get('FRONTEND_URL', 'http://localhost:5173');
+header("Access-Control-Allow-Origin: $origin");
+header('Access-Control-Allow-Credentials: true');
 header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
@@ -26,6 +29,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 $method = $_SERVER['REQUEST_METHOD'];
+
+// CSRF check
+if (in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'])) {
+    if (isset($_COOKIE['access_token'])) {
+        $headers = function_exists('getallheaders') ? array_change_key_case(getallheaders(), CASE_LOWER) : [];
+        $requestedWith = $headers['x-requested-with'] ?? '';
+        if (strtolower($requestedWith) !== 'xmlhttprequest') {
+            jsonResponse('error', 'Petición rechazada por seguridad (CSRF Blocked).', null, null, null, 403);
+        }
+    }
+}
 
 // Build a clean URI
 $uri = isset($_SERVER['PATH_INFO']) ? trim($_SERVER['PATH_INFO'], '/') : '';
@@ -113,7 +127,7 @@ if ($recurso === 'companions') {
 // =========================================================================
 // APPOINTMENTS  /v1/appointments[/{id}[/change-status|confirm|logs[/{id}]]]
 //               + /v1/appointments/calendar
-//               + /v1/appointments/{id}/confirm-attendance  (public)
+//               + /v1/appointments/{id}/confirm-attendance?token=...  (public, requires single-use token)
 // =========================================================================
 if ($recurso === 'appointments') {
     $ctrl = new AppointmentController();

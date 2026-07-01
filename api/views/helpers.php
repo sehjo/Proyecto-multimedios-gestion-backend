@@ -147,20 +147,30 @@ function parseNumericId(?string $raw): int
     return (int) $raw;
 }
 
-function getAuthUser()
+function getRequestToken(): ?string
 {
-    // Look up the Authorization header case-insensitively to support mod_php and PHP-FPM
-    $headers    = function_exists('getallheaders') ? array_change_key_case(getallheaders(), CASE_LOWER) : [];
-    $authHeader = $headers['authorization']
-        ?? $_SERVER['HTTP_AUTHORIZATION']
-        ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
-        ?? '';
+    // 1. Prioridad: Leer de la cabecera Authorization (para Postman / Clientes API)
+    $headers = function_exists('getallheaders') ? array_change_key_case(getallheaders(), CASE_LOWER) : [];
+    $authHeader = $headers['authorization'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
 
-    if (!$authHeader || strncmp($authHeader, 'Bearer ', 7) !== 0) {
-        return null;
+    if ($authHeader && strncmp($authHeader, 'Bearer ', 7) === 0) {
+        return substr($authHeader, 7);
     }
 
-    $token = substr($authHeader, 7);
+    // 2. Alternativa: Leer de la cookie (para sesiones web del navegador)
+    if (isset($_COOKIE['access_token'])) {
+        return $_COOKIE['access_token'];
+    }
+
+    return null;
+}
+
+function getAuthUser()
+{
+    $token = getRequestToken();
+    if (!$token) {
+        return null;
+    }
 
     require_once __DIR__ . '/../dao/authDao.php';
     $authDao = new AuthDao();
@@ -172,6 +182,17 @@ function requireAuth()
     $user = getAuthUser();
     if (!$user) {
         jsonResponse('error', 'No autenticado. Proporciona un token válido.', null, null, null, 401);
+    }
+    return $user;
+}
+
+function requirePermission(string $permission)
+{
+    $user = requireAuth();
+    require_once __DIR__ . '/../dao/permissionDao.php';
+    $permissionDao = new PermissionDao();
+    if (!$permissionDao->userHasPermission((int) $user['id'], $permission)) {
+        jsonResponse('error', 'No tienes permisos suficientes para realizar esta acción.', null, null, null, 403);
     }
     return $user;
 }

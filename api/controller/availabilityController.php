@@ -33,7 +33,7 @@ class AvailabilityController
 
     public function store(): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('availability.create');
         $json = getJsonInput();
 
         if (isset($json['day_of_week'])) {
@@ -82,7 +82,7 @@ class AvailabilityController
 
     public function update(int $id): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('availability.update');
         $slot  = $this->dao->findById($id);
 
         if (!$slot) {
@@ -133,7 +133,7 @@ class AvailabilityController
 
     public function destroy(int $id): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('availability.delete');
         $slot  = $this->dao->findById($id);
 
         if (!$slot) {

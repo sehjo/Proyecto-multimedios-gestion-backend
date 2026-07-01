@@ -4,6 +4,7 @@ require_once __DIR__ . '/../views/helpers.php';
 require_once __DIR__ . '/../dao/appointmentDao.php';
 require_once __DIR__ . '/../models/appointment.php';
 require_once __DIR__ . '/../config/mailer.php';
+require_once __DIR__ . '/../config/env.php';
 
 class AppointmentController
 {
@@ -16,7 +17,7 @@ class AppointmentController
 
     public function index(): void
     {
-        requireAuth();
+        requirePermission('appointments.read');
 
         $perPage = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 50;
         $page    = isset($_GET['page'])     ? max(1, (int) $_GET['page'])     : 1;
@@ -44,7 +45,7 @@ class AppointmentController
 
     public function store(): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('appointments.create');
         $json  = getJsonInput();
 
         $areasStr  = implode(',', $this->dao->getValidAreas());
@@ -81,7 +82,7 @@ class AppointmentController
 
     public function show(int $id): void
     {
-        requireAuth();
+        requirePermission('appointments.read');
 
         $appointment = $this->dao->findById($id);
         if (!$appointment) {
@@ -93,7 +94,7 @@ class AppointmentController
 
     public function update(int $id): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('appointments.update');
         $appointment  = $this->dao->findById($id);
 
         if (!$appointment) {
@@ -151,52 +152,64 @@ class AppointmentController
 
     public function changeStatus(int $id): void
     {
-        $actor  = requireAuth();
-        $appointment   = $this->dao->findById($id);
+        try {
+            $actor  = requirePermission('appointments.update');
+            $appointment   = $this->dao->findById($id);
 
-        if (!$appointment) {
-            jsonResponse('error', 'Cita no encontrada.', null, null, null, 404);
+            if (!$appointment) {
+                jsonResponse('error', 'Cita no encontrada.', null, null, null, 404);
+            }
+
+            $json      = getJsonInput();
+            $statusesStr = implode(',', $this->dao->getValidStatuses());
+            $errors   = validar($json, [
+                'status' => "required|in:{$statusesStr}",
+            ]);
+
+            // Accept 'cancellation_reason' or its short alias 'reason'
+            $cancelReason        = $json['cancellation_reason'] ?? $json['reason'] ?? null;
+            $requiresCancellation = in_array($json['status'] ?? '', ['canceled', 'rejected'], true);
+            if ($requiresCancellation && empty($cancelReason)) {
+                $errors['cancellation_reason'][] = 'El motivo de cancelación es obligatorio para este estado.';
+            }
+
+            if (!empty($errors)) {
+                jsonResponse('error', 'Error de validación.', null, $errors, null, 422);
+            }
+
+            $oldStatus = $appointment['status'];
+            $this->dao->changeStatus($id, $json['status'], $cancelReason);
+
+            $this->dao->logAction(
+                $actor['id'] ?? null,
+                $id,
+                'ChangeStatus',
+                json_encode(['status' => ['from' => $oldStatus, 'to' => $json['status']]])
+            );
+
+            $confirmUrl = null;
+            if ($json['status'] === 'approved') {
+                $confirmUrl = $this->issueConfirmationToken($id, $appointment['appointment_datetime']);
+            } else {
+                $this->dao->clearConfirmationToken($id);
+            }
+
+            $actualizada = $this->dao->findById($id);
+
+            if (!empty($actualizada['patient_email'])) {
+                $this->sendAppointmentEmail($actualizada, $json['status'], $confirmUrl);
+            }
+
+            jsonResponse('success', 'Estado de la cita actualizado correctamente.', $actualizada);
+        } catch (\Throwable $e) {
+            // Return structured JSON instead of empty 500 to help tests and debugging
+            jsonResponse('error', 'Error interno: ' . ($e->getMessage() ?? 'unknown'), null, null, null, 500);
         }
-
-        $json      = getJsonInput();
-        $statusesStr = implode(',', $this->dao->getValidStatuses());
-        $errors   = validar($json, [
-            'status' => "required|in:{$statusesStr}",
-        ]);
-
-        // Accept 'cancellation_reason' or its short alias 'reason'
-        $cancelReason        = $json['cancellation_reason'] ?? $json['reason'] ?? null;
-        $requiresCancellation = in_array($json['status'] ?? '', ['canceled', 'rejected'], true);
-        if ($requiresCancellation && empty($cancelReason)) {
-            $errors['cancellation_reason'][] = 'El motivo de cancelación es obligatorio para este estado.';
-        }
-
-        if (!empty($errors)) {
-            jsonResponse('error', 'Error de validación.', null, $errors, null, 422);
-        }
-
-        $oldStatus = $appointment['status'];
-        $this->dao->changeStatus($id, $json['status'], $cancelReason);
-
-        $this->dao->logAction(
-            $actor['id'] ?? null,
-            $id,
-            'ChangeStatus',
-            json_encode(['status' => ['from' => $oldStatus, 'to' => $json['status']]])
-        );
-
-        $actualizada = $this->dao->findById($id);
-
-        if (!empty($actualizada['patient_email'])) {
-            $this->sendAppointmentEmail($actualizada, $json['status']);
-        }
-
-        jsonResponse('success', 'Estado de la cita actualizado correctamente.', $actualizada);
     }
 
     public function confirm(int $id): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('appointments.update');
         $appointment  = $this->dao->findById($id);
 
         if (!$appointment) {
@@ -209,6 +222,7 @@ class AppointmentController
 
         $oldStatus = $appointment['status'];
         $this->dao->confirm($id);
+        $this->dao->clearConfirmationToken($id);
         $this->dao->logAction(
             $actor['id'] ?? null, $id, 'Confirm',
             json_encode(['status' => ['from' => $oldStatus, 'to' => 'confirmed']])
@@ -219,26 +233,56 @@ class AppointmentController
 
     public function confirmAttendance(int $id): void
     {
-        // Public endpoint — confirms attendance without a session token
-        $appointment = $this->dao->findById($id);
+        // Public endpoint — no session required, but a single-use token (sent by email
+        // when the appointment is approved) is mandatory to prevent IDOR via guessable IDs.
+        $token = $_GET['token'] ?? null;
+        if (!$token) {
+            jsonResponse('error', 'El enlace de confirmación no es válido.', null, null, null, 422);
+        }
 
-        if (!$appointment) {
-            jsonResponse('error', 'Cita no encontrada.', null, null, null, 404);
+        $appointment = $this->dao->findByConfirmationToken(hash('sha256', $token));
+
+        if (!$appointment || (int) $appointment['id'] !== $id) {
+            jsonResponse('error', 'El enlace de confirmación no es válido.', null, null, null, 422);
+        }
+
+        if (strtotime($appointment['confirmation_token_expires_at']) < time()) {
+            $this->dao->clearConfirmationToken($id);
+            jsonResponse('error', 'El enlace de confirmación ha expirado.', null, null, null, 422);
         }
 
         if (!in_array($appointment['status'], ['approved', 'pending'], true)) {
             jsonResponse('error', 'La cita no puede confirmarse en su estado actual.', null, null, null, 422);
         }
 
+        $oldStatus = $appointment['status'];
         $this->dao->confirm($id);
-        $this->dao->logAction(null, $id, 'Confirm', null);
+        $this->dao->clearConfirmationToken($id);
+        $this->dao->logAction(
+            null, $id, 'Confirm',
+            json_encode(['status' => ['from' => $oldStatus, 'to' => 'confirmed']])
+        );
 
         jsonResponse('success', 'Asistencia confirmada correctamente.', $this->dao->findById($id));
     }
 
+    private function issueConfirmationToken(int $id, string $appointmentDatetime): string
+    {
+        $plainToken  = bin2hex(random_bytes(32));
+        $hashedToken = hash('sha256', $plainToken);
+        // Valid until one day after the appointment itself, not a fixed window from issuance,
+        // since approval can happen weeks ahead of the actual appointment date.
+        $expiresAt = date('Y-m-d H:i:s', strtotime($appointmentDatetime) + 86400);
+
+        $this->dao->saveConfirmationToken($id, $hashedToken, $expiresAt);
+
+        $apiUrl = Env::get('APP_URL', 'http://localhost:8000');
+        return $apiUrl . '/api/v1/appointments/' . $id . '/confirm-attendance?token=' . $plainToken;
+    }
+
     public function destroy(int $id): void
     {
-        $actor = requireAuth();
+        $actor = requirePermission('appointments.delete');
         $appointment  = $this->dao->findById($id);
 
         if (!$appointment) {
@@ -254,21 +298,30 @@ class AppointmentController
 
     public function calendar(): void
     {
-        requireAuth();
+        requirePermission('appointments.read');
 
-        $fecha = $_GET['date'] ?? date('Y-m-d');
+        $startDate = $_GET['start_date'] ?? null;
+        $endDate   = $_GET['end_date']   ?? null;
+        $area      = $_GET['attention_area'] ?? null;
+        $errors    = [];
 
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
-            jsonResponse('error', 'El parámetro date debe tener formato YYYY-MM-DD.', null, null, null, 422);
+        if (!$startDate || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate)) {
+            $errors['start_date'][] = 'El parámetro start_date es obligatorio (YYYY-MM-DD).';
+        }
+        if (!$endDate || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)) {
+            $errors['end_date'][] = 'El parámetro end_date es obligatorio (YYYY-MM-DD).';
+        }
+        if (!empty($errors)) {
+            jsonResponse('error', 'Error de validación.', null, $errors, null, 422);
         }
 
-        $datos = $this->dao->calendar($fecha);
-        jsonResponse('success', "Citas del {$fecha} obtenidas correctamente.", $datos);
+        $datos = $this->dao->calendarRange($startDate, $endDate, $area ?: null);
+        jsonResponse('success', "Citas del {$startDate} al {$endDate} obtenidas correctamente.", $datos);
     }
 
     public function logs(): void
     {
-        requireAuth();
+        requirePermission('logs.appointments');
 
         $perPage = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 50;
         $page    = isset($_GET['page'])     ? max(1, (int) $_GET['page'])     : 1;
@@ -296,7 +349,7 @@ class AppointmentController
 
     public function showLog(int $id): void
     {
-        requireAuth();
+        requirePermission('logs.appointments');
         $log = $this->dao->findLogById($id);
         if (!$log) {
             jsonResponse('error', 'Log no encontrado.', null, null, null, 404);
@@ -307,7 +360,7 @@ class AppointmentController
     // -----------------------------------------------------------------------
     // Send email based on the new appointment status
     // -----------------------------------------------------------------------
-    private function sendAppointmentEmail(array $appointment, string $newStatus): void
+    private function sendAppointmentEmail(array $appointment, string $newStatus, ?string $confirmUrl = null): void
     {
         $asuntos = [
             'approved' => '[MediCode] Tu cita fue aprobada',
@@ -321,14 +374,15 @@ class AppointmentController
             (new Mailer())->send(
                 $appointment['patient_email'],
                 $asuntos[$newStatus],
-                $this->buildAppointmentTemplate($appointment, $newStatus)
+                $this->buildAppointmentTemplate($appointment, $newStatus, $confirmUrl)
             );
-        } catch (\RuntimeException) {
-            // Fails silently; the status change has already been persisted
+        } catch (\Throwable $ex) {
+            // Fail silently but avoid bubbling unexpected exceptions that would cause HTTP 500 without body
+            // Optionally log $ex->getMessage()
         }
     }
 
-    private function buildAppointmentTemplate(array $appointment, string $estado): string
+    private function buildAppointmentTemplate(array $appointment, string $estado, ?string $confirmUrl = null): string
     {
         $patient = htmlspecialchars($appointment['patient_name'] ?? 'Paciente');
         $area     = htmlspecialchars($appointment['attention_area'] ?? '');
@@ -350,8 +404,15 @@ class AppointmentController
                           . '</div>';
         }
 
+        $botonConfirmar = '';
+        if ($estado === 'approved' && $confirmUrl) {
+            $botonConfirmar = '<div style="text-align:center;margin:24px 0;">'
+                             . '<a href="' . htmlspecialchars($confirmUrl) . '" style="background:#1a56db;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;">Confirmar asistencia</a>'
+                             . '</div>';
+        }
+
         $notaFinal = $estado === 'approved'
-            ? '<p style="font-size:14px;color:#6b7280;">Recibirás un recordatorio el día de la cita para confirmar tu asistencia.</p>'
+            ? '<p style="font-size:14px;color:#6b7280;">Por favor confirma tu asistencia con el botón de arriba antes de la fecha de tu cita.</p>'
             : '<p style="font-size:14px;color:#6b7280;">Si tienes dudas, puedes solicitar una nueva cita o comunicarte con el centro de salud.</p>';
 
         return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head>'
@@ -366,6 +427,7 @@ class AppointmentController
              . '<p style="margin:0;"><strong>Fecha y hora:</strong> ' . $fecha . '</p>'
              . '</div>'
              . $bloqueMotivo
+             . $botonConfirmar
              . $notaFinal
              . '</div>'
              . '<div style="padding:24px 32px;border-top:1px solid #e5e7eb;font-size:12px;color:#9ca3af;text-align:center;">'

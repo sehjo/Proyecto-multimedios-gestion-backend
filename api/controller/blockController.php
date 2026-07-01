@@ -36,12 +36,16 @@ class BlockController
 
     public function store(): void
     {
-        $actor   = requireAuth();
+        $actor   = requirePermission('blocks.create');
         $json    = getJsonInput();
+        // Note: `full_day` may be boolean false which PHP treats as empty in some validators.
+        // Validate `date` normally and ensure `full_day` key is present explicitly.
         $errors = validar($json, [
             'date'     => 'required|date',
-            'full_day' => 'required',
         ]);
+        if (!array_key_exists('full_day', $json)) {
+            $errors['full_day'][] = 'El campo full_day es obligatorio.';
+        }
 
         if (isset($json['date']) && strtotime($json['date']) < strtotime(date('Y-m-d'))) {
             $errors['date'][] = 'La fecha del bloqueo no puede ser en el pasado.';
@@ -80,7 +84,7 @@ class BlockController
 
     public function update(int $id): void
     {
-        $actor   = requireAuth();
+        $actor   = requirePermission('blocks.update');
         $block = $this->dao->findById($id);
 
         if (!$block) {
@@ -139,7 +143,7 @@ class BlockController
 
     public function destroy(int $id): void
     {
-        $actor   = requireAuth();
+        $actor   = requirePermission('blocks.delete');
         $block = $this->dao->findById($id);
 
         if (!$block) {
